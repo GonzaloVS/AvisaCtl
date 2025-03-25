@@ -1,0 +1,12 @@
+[package]
+name = "AvisaCtl"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+eframe = "0.31.1"
+chrono = "0.4.40"
+confy = "0.6.1"
+serde = { version = "1.0.219", features = ["derive"] }
+native-dialog = "0.7.0"              # Para selector de carpetas
+ssh2 = "0.9.5"
