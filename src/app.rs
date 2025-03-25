@@ -1,6 +1,9 @@
-use eframe::{egui::{self, TopBottomPanel}, App, Frame};
-use crate::deploy::gui::deploy_tab;
 use crate::config::{load_config, AvisaCtlConfig};
+use crate::deploy::gui::deploy_tab;
+use eframe::{
+    egui::{self, TopBottomPanel},
+    App, Frame,
+};
 
 pub struct AvisaCtlApp {
     pub config: AvisaCtlConfig,

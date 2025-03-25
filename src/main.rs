@@ -5,8 +5,7 @@ mod deploy;
 mod logview;
 mod services;
 
-
-use eframe::{NativeOptions, run_native};
+use eframe::{run_native, NativeOptions};
 
 fn main() -> eframe::Result<()> {
     let options = NativeOptions::default();

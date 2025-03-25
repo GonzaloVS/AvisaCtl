@@ -1,2 +1,2 @@
-mod gui;
 mod checker;
+mod gui;

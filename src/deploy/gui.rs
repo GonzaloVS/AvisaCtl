@@ -1,9 +1,11 @@
+use crate::app::AvisaCtlApp;
+use crate::config::save_config;
+use crate::deploy::logic::{
+    rename_previous_binary_if_exists, run_pre_release_checks, DeployTarget, Platform,
+};
 use chrono::Local;
 use eframe::egui::{self, Context, RichText};
 use native_dialog::FileDialog;
-use crate::app::AvisaCtlApp;
-use crate::config::save_config;
-use crate::deploy::logic::{Platform, DeployTarget, rename_previous_binary_if_exists, run_pre_release_checks};
 
 pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
     eframe::egui::CentralPanel::default().show(ctx, |ui| {
@@ -57,7 +59,8 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
 
             if let Some(path) = &app.project_path {
                 if app.platform != Platform::Linux {
-                    app.logs.push("Solo se permite compilar para Linux.".to_string());
+                    app.logs
+                        .push("Solo se permite compilar para Linux.".to_string());
                     return;
                 }
 
@@ -68,17 +71,23 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
 
                 app.logs.push(format!("Plataforma: {:?}", app.platform));
                 app.logs.push(format!("Destino: {:?}", app.target));
-                app.logs.push(format!("Timestamp: {}", Local::now().format("%Y%m%d-%H:%M:%S")));
+                app.logs.push(format!(
+                    "Timestamp: {}",
+                    Local::now().format("%Y%m%d-%H:%M:%S")
+                ));
 
                 let success = run_pre_release_checks(path, &mut app.logs, &app.platform);
                 if success {
                     let _ = rename_previous_binary_if_exists(path, &mut app.logs, &app.platform);
-                    app.logs.push("Deploy local completado con éxito.".to_string());
+                    app.logs
+                        .push("Deploy local completado con éxito.".to_string());
                 } else {
-                    app.logs.push("Se detuvo el deploy por error previo.".to_string());
+                    app.logs
+                        .push("Se detuvo el deploy por error previo.".to_string());
                 }
             } else {
-                app.logs.push("No se seleccionó ningún proyecto.".to_string());
+                app.logs
+                    .push("No se seleccionó ningún proyecto.".to_string());
             }
         }
 

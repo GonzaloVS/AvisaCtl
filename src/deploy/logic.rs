@@ -1,8 +1,7 @@
-use std::fmt::format;
-use std::process::Command;
-use std::path::Path;
-use std::fs;
 use chrono::Local;
+use std::fs;
+use std::path::Path;
+use std::process::Command;
 
 #[derive(Debug, PartialEq)]
 pub enum Platform {
@@ -46,7 +45,7 @@ fn run_cargo_step(
 pub fn run_pre_release_checks(
     project_path: &str,
     logs: &mut Vec<String>,
-    platform: &super::logic::Platform,
+    _platform: &super::logic::Platform,
 ) -> bool {
     logs.push("Iniciando verificaciones antes del release...".to_string());
 
@@ -103,7 +102,13 @@ pub fn build_with_docker(project_path: &str, logs: &mut Vec<String>) -> bool {
         .arg("-w")
         .arg("/project")
         .arg("rust:latest")
-        .args(["cargo", "build", "--release", "--target", "x86_64-unknown-linux-gnu"])
+        .args([
+            "cargo",
+            "build",
+            "--release",
+            "--target",
+            "x86_64-unknown-linux-gnu",
+        ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output();
@@ -126,8 +131,7 @@ pub fn build_with_docker(project_path: &str, logs: &mut Vec<String>) -> bool {
     }
 }
 
-
-pub fn build_project(path: &str, logs: &mut Vec<String>, platform: &Platform) -> bool {
+/*pub fn build_project(path: &str, logs: &mut Vec<String>, platform: &Platform) -> bool {
     logs.push(format!("Ejecutando build en: {}", path));
 
     let path_obj = Path::new(path);
@@ -155,20 +159,20 @@ pub fn build_project(path: &str, logs: &mut Vec<String>, platform: &Platform) ->
     match result {
         Ok(output) => {
             if output.status.success() {
-                logs.push("✅ Build completado con éxito.".to_string());
+                logs.push("Build completado con éxito.".to_string());
                 true
             } else {
-                logs.push("❌ Falló el build:".to_string());
+                logs.push("Falló el build:".to_string());
                 logs.push(format!("{}", String::from_utf8_lossy(&output.stderr)));
                 false
             }
         }
         Err(err) => {
-            logs.push(format!("❌ Error al ejecutar cargo: {}", err));
+            logs.push(format!("Error al ejecutar cargo: {}", err));
             false
         }
     }
-}
+}*/
 
 /// Renombra el binario si ya existe (añade timestamp).
 pub fn rename_previous_binary_if_exists(
@@ -179,7 +183,7 @@ pub fn rename_previous_binary_if_exists(
     let pkg_name = match extract_package_name(&Path::new(project_path).join("Cargo.toml")) {
         Some(name) => name,
         None => {
-            logs.push("❌ No se pudo leer el nombre del paquete.".to_string());
+            logs.push("No se pudo leer el nombre del paquete.".to_string());
             return None;
         }
     };
@@ -210,13 +214,16 @@ pub fn rename_previous_binary_if_exists(
         let new_path = bin_path.with_file_name(new_name.clone());
 
         if let Err(e) = fs::rename(&bin_path, &new_path) {
-            logs.push(format!("❌ Error al renombrar binario previo: {}", e));
+            logs.push(format!("Error al renombrar binario previo: {}", e));
             return None;
         }
 
-        logs.push(format!("📁 Binario anterior renombrado como: {}", new_path.display()));
+        logs.push(format!(
+            "📁 Binario anterior renombrado como: {}",
+            new_path.display()
+        ));
     } else {
-        logs.push("ℹ️ No había binario anterior que renombrar.".to_string());
+        logs.push("No había binario anterior que renombrar.".to_string());
     }
 
     Some(pkg_name)
