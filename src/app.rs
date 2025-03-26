@@ -42,16 +42,15 @@ impl App for AvisaCtlApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
         TopBottomPanel::top("tabs").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.current_tab, Tab::Deploy, "🚀 Deploy");
-                ui.selectable_value(&mut self.current_tab, Tab::Backup, "💾 Backup");
-                ui.selectable_value(&mut self.current_tab, Tab::Services, "📡 Servicios");
-                ui.selectable_value(&mut self.current_tab, Tab::LogViewer, "📝 Logs");
+                ui.selectable_value(&mut self.current_tab, Tab::Deploy, "Deploy");
+                ui.selectable_value(&mut self.current_tab, Tab::Backup, "Backup");
+                ui.selectable_value(&mut self.current_tab, Tab::Services, "Servicios");
+                ui.selectable_value(&mut self.current_tab, Tab::LogViewer, "Logs");
             });
         });
 
-        match self.current_tab {
-            Tab::Deploy => deploy_tab(self, ctx),
-            _ => {}
+        if self.current_tab == Tab::Deploy {
+            deploy_tab(self, ctx);
         }
     }
 }

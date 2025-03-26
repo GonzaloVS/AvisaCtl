@@ -31,7 +31,7 @@ fn run_cargo_step(
                 true
             } else {
                 logs.push(format!("{} falló:", step_name));
-                logs.push(format!("{}", String::from_utf8_lossy(&output.stderr)));
+                logs.push(format!("{}", String::from_utf8_lossy(&output.stdout)));
                 false
             }
         }
@@ -45,7 +45,7 @@ fn run_cargo_step(
 pub fn run_pre_release_checks(
     project_path: &str,
     logs: &mut Vec<String>,
-    _platform: &super::logic::Platform,
+    _platform: &Platform,
 ) -> bool {
     logs.push("Iniciando verificaciones antes del release...".to_string());
 
@@ -79,29 +79,80 @@ pub fn run_pre_release_checks(
         }
     }
 
-    logs.push("Validación completada. Procediendo al build...".to_string());
+    logs.push("Validación completada. Verificando Dockerfile...".to_string());
 
+    if !ensure_dockerfile_exists(project_path, logs) {
+        logs.push("No se pudo crear/verificar el Dockerfile. Se cancela el build.".to_string());
+        return false;
+    }
+
+    logs.push("Dockerfile verificado. Procediendo al build en Docker...".to_string());
     build_with_docker(project_path, logs)
 }
 
 pub fn build_with_docker(project_path: &str, logs: &mut Vec<String>) -> bool {
     use std::process::Stdio;
 
-    let abs_path = Path::new(project_path)
+    let abs_path_buf = Path::new(project_path)
         .canonicalize()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| project_path.to_string());
+        .unwrap_or_else(|_| Path::new(project_path).to_path_buf());
 
-    logs.push(format!("Lanzando Docker para compilar en: {}", abs_path));
+    let abs_path = abs_path_buf.to_string_lossy().replace("\\\\?\\", "");
 
-    let result = Command::new("docker")
+    let pkg_name = match extract_package_name(&Path::new(project_path).join("Cargo.toml")) {
+        Some(name) => name,
+        None => {
+            logs.push("No se pudo leer el nombre del paquete.".to_string());
+            return false;
+        }
+    };
+
+    let dockerfile_name = format!("Dockerfile.{}", pkg_name);
+    let image_name = format!("{}-build", pkg_name.to_lowercase());
+
+    logs.push(format!("Construyendo imagen Docker '{}'", image_name));
+
+    let build_result = Command::new("docker")
+        .arg("build")
+        .arg("-f")
+        .arg(&dockerfile_name)
+        .arg("-t")
+        .arg(&image_name)
+        .arg(&abs_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output();
+
+    match build_result {
+        Ok(output) => {
+            if output.status.success() {
+                logs.push("Imagen Docker construida correctamente.".to_string());
+            } else {
+                logs.push("Falló la construcción de la imagen Docker:".to_string());
+                logs.push(String::from_utf8_lossy(&output.stderr).to_string());
+                return false;
+            }
+        }
+        Err(e) => {
+            logs.push(format!("Error ejecutando docker build: {}", e));
+            return false;
+        }
+    }
+
+    logs.push("Lanzando contenedor para compilar el binario...".to_string());
+
+    // Ejecución del build dentro del contenedor
+    let run_result = Command::new("docker")
         .arg("run")
         .arg("--rm")
         .arg("-v")
-        .arg(format!("{}:/project", abs_path))
+        .arg(format!(
+            "{}:/project",
+            convert_windows_path_for_docker(&abs_path)
+        ))
         .arg("-w")
         .arg("/project")
-        .arg("rust:latest")
+        .arg(&image_name)
         .args([
             "cargo",
             "build",
@@ -113,10 +164,10 @@ pub fn build_with_docker(project_path: &str, logs: &mut Vec<String>) -> bool {
         .stderr(Stdio::piped())
         .output();
 
-    match result {
+    match run_result {
         Ok(output) => {
             if output.status.success() {
-                logs.push("Build en Docker completada con éxito.".to_string());
+                logs.push("Build en Docker completado con éxito.".to_string());
                 true
             } else {
                 logs.push("Build en Docker falló:".to_string());
@@ -125,60 +176,16 @@ pub fn build_with_docker(project_path: &str, logs: &mut Vec<String>) -> bool {
             }
         }
         Err(e) => {
-            logs.push(format!("Error al ejecutar Docker: {}", e));
+            logs.push(format!("Error al ejecutar Docker run: {}", e));
             false
         }
     }
 }
 
-/*pub fn build_project(path: &str, logs: &mut Vec<String>, platform: &Platform) -> bool {
-    logs.push(format!("Ejecutando build en: {}", path));
-
-    let path_obj = Path::new(path);
-    if !path_obj.join("Cargo.toml").exists() {
-        logs.push("No se encontró Cargo.toml en esa ruta.".to_string());
-        return false;
-    }
-
-    // Selección de target según plataforma
-    let target = match platform {
-        Platform::Windows => "x86_64-pc-windows-gnu",
-        Platform::Linux => "x86_64-unknown-linux-gnu",
-    };
-
-    logs.push(format!("Target de compilación: {}", target));
-
-    let result = Command::new("cargo")
-        .arg("build")
-        .arg("--release")
-        .arg("--target")
-        .arg(target)
-        .current_dir(path)
-        .output();
-
-    match result {
-        Ok(output) => {
-            if output.status.success() {
-                logs.push("Build completado con éxito.".to_string());
-                true
-            } else {
-                logs.push("Falló el build:".to_string());
-                logs.push(format!("{}", String::from_utf8_lossy(&output.stderr)));
-                false
-            }
-        }
-        Err(err) => {
-            logs.push(format!("Error al ejecutar cargo: {}", err));
-            false
-        }
-    }
-}*/
-
-/// Renombra el binario si ya existe (añade timestamp).
 pub fn rename_previous_binary_if_exists(
     project_path: &str,
     logs: &mut Vec<String>,
-    platform: &super::logic::Platform,
+    platform: &Platform,
 ) -> Option<String> {
     let pkg_name = match extract_package_name(&Path::new(project_path).join("Cargo.toml")) {
         Some(name) => name,
@@ -189,11 +196,11 @@ pub fn rename_previous_binary_if_exists(
     };
 
     let bin_path = match platform {
-        super::logic::Platform::Windows => Path::new(project_path)
+        Platform::Windows => Path::new(project_path)
             .join("target")
             .join("release")
             .join(format!("{}.exe", pkg_name)),
-        super::logic::Platform::Linux => Path::new(project_path)
+        Platform::Linux => Path::new(project_path)
             .join("target")
             .join("release")
             .join(&pkg_name),
@@ -205,7 +212,7 @@ pub fn rename_previous_binary_if_exists(
             "{} - {}{}",
             pkg_name,
             timestamp,
-            if *platform == super::logic::Platform::Windows {
+            if *platform == Platform::Windows {
                 ".exe"
             } else {
                 ""
@@ -219,7 +226,7 @@ pub fn rename_previous_binary_if_exists(
         }
 
         logs.push(format!(
-            "📁 Binario anterior renombrado como: {}",
+            "Binario anterior renombrado como: {}",
             new_path.display()
         ));
     } else {
@@ -247,4 +254,60 @@ fn extract_package_name(cargo_toml_path: &Path) -> Option<String> {
     }
 
     None
+}
+
+pub fn ensure_dockerfile_exists(project_path: &str, logs: &mut Vec<String>) -> bool {
+    let pkg_name = match extract_package_name(&Path::new(project_path).join("Cargo.toml")) {
+        Some(name) => name,
+        None => {
+            logs.push("No se pudo leer el nombre del paquete para generar Dockerfile.".to_string());
+            return false;
+        }
+    };
+
+    let dockerfile_name = format!("Dockerfile.{}", pkg_name);
+    let dockerfile_path = Path::new(project_path).join(&dockerfile_name);
+
+    if dockerfile_path.exists() {
+        logs.push(format!("{} ya existe.", dockerfile_name));
+        return true;
+    }
+
+    let dockerfile_contents = r#"
+FROM rust:latest
+
+RUN apt update && apt install -y \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    libclang-dev \
+    curl \
+    && cargo install cargo-audit
+
+WORKDIR /project
+"#;
+
+    match fs::write(&dockerfile_path, dockerfile_contents.trim_start()) {
+        Ok(_) => {
+            logs.push(format!("{} generado automáticamente.", dockerfile_name));
+            true
+        }
+        Err(e) => {
+            logs.push(format!("No se pudo crear {}: {}", dockerfile_name, e));
+            false
+        }
+    }
+}
+
+/// Convierte rutas tipo `C:\...` a `/c/...` en Windows. En Linux no modifica nada.
+#[cfg(target_os = "windows")]
+fn convert_windows_path_for_docker(path: &str) -> String {
+    let drive_letter = &path[0..1].to_lowercase();
+    let without_colon = path[2..].replace("\\", "/");
+    format!("/{}/{}", drive_letter, without_colon)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn convert_windows_path_for_docker(path: &str) -> String {
+    path.to_string()
 }

@@ -8,7 +8,7 @@ use eframe::egui::{self, Context, RichText};
 use native_dialog::FileDialog;
 
 pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
-    eframe::egui::CentralPanel::default().show(ctx, |ui| {
+    egui::CentralPanel::default().show(ctx, |ui| {
         ui.heading("Deploy Canary");
         ui.add_space(8.0);
 
@@ -96,7 +96,7 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
 
         ui.label(RichText::new("Log de acciones").strong());
 
-        eframe::egui::ScrollArea::vertical()
+        egui::ScrollArea::vertical()
             .auto_shrink([false; 2])
             .stick_to_bottom(true)
             .show(ui, |ui| {
