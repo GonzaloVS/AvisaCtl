@@ -1,14 +1,13 @@
 use crate::app::AvisaCtlApp;
-use crate::config::save_config;
-use crate::deploy::logic::{
-    rename_previous_binary_if_exists, run_pre_release_checks, DeployTarget, Platform,
-};
+use crate::deploy::local::{rename_previous_binary_if_exists, run_pre_release_checks};
+use crate::deploy::logic::{DeployTarget, Platform, RemoteConfig};
+use crate::deploy::remote::deploy_to_remote;
 use chrono::Local;
 use eframe::egui::{self, Context, RichText};
 use native_dialog::FileDialog;
 
 pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
-    eframe::egui::CentralPanel::default().show(ctx, |ui| {
+    egui::CentralPanel::default().show(ctx, |ui| {
         ui.heading("Deploy Canary");
         ui.add_space(8.0);
 
@@ -44,6 +43,23 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                     ui.label("Servidor:");
                     ui.text_edit_singleline(&mut app.server_address);
                 });
+
+                ui.horizontal(|ui| {
+                    ui.label("Usuario:");
+                    ui.text_edit_singleline(&mut app.remote_user);
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Password:");
+                    use eframe::egui::TextEdit;
+                    ui.add(TextEdit::singleline(&mut app.remote_pass).password(true));
+
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Ruta remota:");
+                    ui.text_edit_singleline(&mut app.remote_path);
+                });
             }
 
             ui.horizontal(|ui| {
@@ -64,11 +80,6 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                     return;
                 }
 
-                if app.target == DeployTarget::Remote {
-                    app.config.last_server_address = app.server_address.clone();
-                    save_config(&app.config);
-                }
-
                 app.logs.push(format!("Plataforma: {:?}", app.platform));
                 app.logs.push(format!("Destino: {:?}", app.target));
                 app.logs.push(format!(
@@ -78,9 +89,34 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
 
                 let success = run_pre_release_checks(path, &mut app.logs, &app.platform);
                 if success {
-                    let _ = rename_previous_binary_if_exists(path, &mut app.logs, &app.platform);
-                    app.logs
-                        .push("Deploy local completado con éxito.".to_string());
+                    if app.target == DeployTarget::Remote {
+                        let remote_cfg = RemoteConfig {
+                            server_address: app.server_address.clone(),
+                            username: app.remote_user.clone(),
+                            pass: app.remote_pass.clone(),
+                            remote_path: app.remote_path.clone(),
+                        };
+
+                        let uploaded = deploy_to_remote(
+                            path,
+                            &mut app.logs,
+                            &app.platform,
+                            &remote_cfg,
+                            &mut app.config,
+                        );
+
+                        if uploaded {
+                            app.logs
+                                .push("Deploy remoto completado con éxito.".to_string());
+                        } else {
+                            app.logs.push("Error durante el deploy remoto.".to_string());
+                        }
+                    } else {
+                        let _ =
+                            rename_previous_binary_if_exists(path, &mut app.logs, &app.platform);
+                        app.logs
+                            .push("Deploy local completado con éxito.".to_string());
+                    }
                 } else {
                     app.logs
                         .push("Se detuvo el deploy por error previo.".to_string());
@@ -96,7 +132,7 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
 
         ui.label(RichText::new("Log de acciones").strong());
 
-        eframe::egui::ScrollArea::vertical()
+        egui::ScrollArea::vertical()
             .auto_shrink([false; 2])
             .stick_to_bottom(true)
             .show(ui, |ui| {

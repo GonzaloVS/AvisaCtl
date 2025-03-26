@@ -13,6 +13,9 @@ pub struct AvisaCtlApp {
     pub platform: crate::deploy::logic::Platform,
     pub target: crate::deploy::logic::DeployTarget,
     pub server_address: String,
+    pub remote_user: String,
+    pub remote_pass: String,
+    pub remote_path: String,
 }
 
 #[derive(PartialEq)]
@@ -30,10 +33,17 @@ impl Default for AvisaCtlApp {
             config: config.clone(),
             current_tab: Tab::Deploy,
             logs: vec![],
-            project_path: None,
+            project_path: if config.last_local_path.is_empty() {
+                None
+            } else {
+                Some(config.last_local_path.clone())
+            },
             platform: crate::deploy::logic::Platform::Linux,
-            target: crate::deploy::logic::DeployTarget::Local,
+            target: crate::deploy::logic::DeployTarget::Remote,
             server_address: config.last_server_address.clone(),
+            remote_user: config.last_remote_user.clone(),
+            remote_pass: config.last_remote_pass.clone(),
+            remote_path: config.last_remote_path.clone(),
         }
     }
 }
@@ -42,16 +52,15 @@ impl App for AvisaCtlApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
         TopBottomPanel::top("tabs").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.current_tab, Tab::Deploy, "🚀 Deploy");
-                ui.selectable_value(&mut self.current_tab, Tab::Backup, "💾 Backup");
-                ui.selectable_value(&mut self.current_tab, Tab::Services, "📡 Servicios");
-                ui.selectable_value(&mut self.current_tab, Tab::LogViewer, "📝 Logs");
+                ui.selectable_value(&mut self.current_tab, Tab::Deploy, "Deploy");
+                ui.selectable_value(&mut self.current_tab, Tab::Backup, "Backup");
+                ui.selectable_value(&mut self.current_tab, Tab::Services, "Servicios");
+                ui.selectable_value(&mut self.current_tab, Tab::LogViewer, "Logs");
             });
         });
 
-        match self.current_tab {
-            Tab::Deploy => deploy_tab(self, ctx),
-            _ => {}
+        if self.current_tab == Tab::Deploy {
+            deploy_tab(self, ctx);
         }
     }
 }
