@@ -1,8 +1,11 @@
+use std::path::Path;
+use std::process::Command;
+use std::sync::mpsc;
+use std::thread;
+
 use crate::config::{save_config, AvisaCtlConfig};
 use crate::deploy::local::rename_previous_binary_if_exists;
 use crate::deploy::logic::{Platform, RemoteConfig};
-use std::path::Path;
-use std::process::Command;
 
 pub fn deploy_to_remote(
     project_path: &str,
@@ -33,6 +36,7 @@ pub fn deploy_to_remote(
 
     let bin_path = Path::new(project_path)
         .join("target")
+        .join("x86_64-unknown-linux-gnu")
         .join("release")
         .join(&binary_name);
 
@@ -47,13 +51,21 @@ pub fn deploy_to_remote(
     );
     logs.push(format!("Subiendo binario a: {}", remote_dest));
 
-    let scp_result = Command::new("scp")
-        .arg(bin_path.to_string_lossy().to_string())
-        .arg(&remote_dest)
-        .output();
+    let bin_path_string = bin_path.to_string_lossy().to_string();
+    let remote_dest_clone = remote_dest.clone();
 
-    match scp_result {
-        Ok(output) => {
+    let (tx, rx) = mpsc::channel();
+
+    thread::spawn(move || {
+        let output = Command::new("scp")
+            .arg(bin_path_string)
+            .arg(&remote_dest_clone)
+            .output();
+        let _ = tx.send(output);
+    });
+
+    match rx.recv() {
+        Ok(Ok(output)) => {
             if output.status.success() {
                 logs.push("Binario subido correctamente.".to_string());
                 true
@@ -63,8 +75,12 @@ pub fn deploy_to_remote(
                 false
             }
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             logs.push(format!("Error ejecutando SCP: {}", e));
+            false
+        }
+        Err(e) => {
+            logs.push(format!("Error en el hilo de SCP: {}", e));
             false
         }
     }

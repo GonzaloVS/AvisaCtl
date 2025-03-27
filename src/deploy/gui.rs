@@ -53,7 +53,6 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                     ui.label("Password:");
                     use eframe::egui::TextEdit;
                     ui.add(TextEdit::singleline(&mut app.remote_pass).password(true));
-
                 });
 
                 ui.horizontal(|ui| {
