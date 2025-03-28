@@ -1,10 +1,11 @@
 use crate::app::AvisaCtlApp;
 use crate::deploy::local::{rename_previous_binary_if_exists, run_pre_release_checks};
 use crate::deploy::logic::{DeployTarget, Platform, RemoteConfig};
-use crate::deploy::remote::deploy_to_remote;
+use crate::deploy::remote::deploy_to_remote_async;
 use chrono::Local;
 use eframe::egui::{self, Context, RichText};
 use native_dialog::FileDialog;
+use std::sync::{Arc, Mutex};
 
 pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
     egui::CentralPanel::default().show(ctx, |ui| {
@@ -69,61 +70,107 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
 
         ui.add_space(10.0);
 
-        if ui.add(egui::Button::new("Iniciar Deploy")).clicked() {
-            app.logs.clear();
+        if !app.is_deploying {
+            if ui.button("▶ Iniciar Deploy").clicked() {
+                app.logs.lock().unwrap().clear();
+                app.is_deploying = true;
+                app.cancel_deploy = false;
+                app.logs.lock().unwrap().clear();
 
-            if let Some(path) = &app.project_path {
-                if app.platform != Platform::Linux {
+                if let Some(path) = &app.project_path {
+                    if app.platform != Platform::Linux {
+                        app.logs
+                            .lock()
+                            .unwrap()
+                            .push("Solo se permite compilar para Linux.".to_string());
+                        return;
+                    }
+
                     app.logs
-                        .push("Solo se permite compilar para Linux.".to_string());
-                    return;
-                }
+                        .lock()
+                        .unwrap()
+                        .push(format!("Plataforma: {:?}", app.platform));
+                    app.logs
+                        .lock()
+                        .unwrap()
+                        .push(format!("Destino: {:?}", app.target));
+                    app.logs.lock().unwrap().push(format!(
+                        "Timestamp: {}",
+                        Local::now().format("%Y%m%d-%H:%M:%S")
+                    ));
 
-                app.logs.push(format!("Plataforma: {:?}", app.platform));
-                app.logs.push(format!("Destino: {:?}", app.target));
-                app.logs.push(format!(
-                    "Timestamp: {}",
-                    Local::now().format("%Y%m%d-%H:%M:%S")
-                ));
+                    let success =
+                        run_pre_release_checks(path, &mut app.logs.lock().unwrap(), &app.platform);
+                    if success {
+                        if app.target == DeployTarget::Remote {
+                            let remote_cfg = RemoteConfig {
+                                server_address: app.server_address.clone(),
+                                username: app.remote_user.clone(),
+                                pass: app.remote_pass.clone(),
+                                remote_path: app.remote_path.clone(),
+                            };
 
-                let success = run_pre_release_checks(path, &mut app.logs, &app.platform);
-                if success {
-                    if app.target == DeployTarget::Remote {
-                        let remote_cfg = RemoteConfig {
-                            server_address: app.server_address.clone(),
-                            username: app.remote_user.clone(),
-                            pass: app.remote_pass.clone(),
-                            remote_path: app.remote_path.clone(),
-                        };
+                            let logs_arc = Arc::clone(&app.logs);
+                            let platform = app.platform.clone();
+                            let config = app.config.clone();
+                            let path = path.clone();
+                            let callback_logs = Arc::clone(&app.logs);
+                            let cancel_flag = Arc::new(Mutex::new(app.cancel_deploy));
+                            let cancel_flag_clone = Arc::clone(&cancel_flag);
+                            let app_logs = Arc::clone(&app.logs);
 
-                        let uploaded = deploy_to_remote(
-                            path,
-                            &mut app.logs,
-                            &app.platform,
-                            &remote_cfg,
-                            &mut app.config,
-                        );
+                            deploy_to_remote_async(
+                                path,
+                                logs_arc,
+                                platform,
+                                remote_cfg,
+                                config,
+                                move |success| {
+                                    let mut logs = callback_logs.lock().unwrap();
+                                    if success {
+                                        logs.push(
+                                            "Deploy remoto completado con éxito.".to_string(),
+                                        );
+                                    } else {
+                                        logs.push("Error durante el deploy remoto.".to_string());
+                                    }
 
-                        if uploaded {
-                            app.logs
-                                .push("Deploy remoto completado con éxito.".to_string());
+                                    // Marcar deploy como finalizado
+                                    let mut logs = app_logs.lock().unwrap();
+                                    logs.push("Estado: deploy finalizado.".into());
+                                },
+                                cancel_flag_clone,
+                            );
                         } else {
-                            app.logs.push("Error durante el deploy remoto.".to_string());
+                            let _ = rename_previous_binary_if_exists(
+                                path,
+                                &mut app.logs.lock().unwrap(),
+                                &app.platform,
+                            );
+                            app.logs
+                                .lock()
+                                .unwrap()
+                                .push("Deploy local completado con éxito.".to_string());
                         }
                     } else {
-                        let _ =
-                            rename_previous_binary_if_exists(path, &mut app.logs, &app.platform);
                         app.logs
-                            .push("Deploy local completado con éxito.".to_string());
+                            .lock()
+                            .unwrap()
+                            .push("Se detuvo el deploy por error previo.".to_string());
                     }
                 } else {
                     app.logs
-                        .push("Se detuvo el deploy por error previo.".to_string());
+                        .lock()
+                        .unwrap()
+                        .push("No se seleccionó ningún proyecto.".to_string());
                 }
-            } else {
-                app.logs
-                    .push("No se seleccionó ningún proyecto.".to_string());
             }
+        } else if ui.button("⏹ Cancelar Deploy").clicked() {
+            app.cancel_deploy = true;
+            app.logs
+                .lock()
+                .unwrap()
+                .push("Cancelación solicitada.".into());
         }
 
         ui.add_space(12.0);
@@ -135,7 +182,7 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
             .auto_shrink([false; 2])
             .stick_to_bottom(true)
             .show(ui, |ui| {
-                for line in &app.logs {
+                for line in &*app.logs.lock().unwrap() {
                     ui.label(line);
                 }
             });

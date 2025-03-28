@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Platform {
     Linux,
     Windows,

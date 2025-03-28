@@ -1,14 +1,16 @@
-use crate::config::{load_config, AvisaCtlConfig};
-use crate::deploy::gui::deploy_tab;
 use eframe::{
     egui::{self, TopBottomPanel},
     App, Frame,
 };
+use std::sync::{Arc, Mutex};
+
+use crate::config::{load_config, AvisaCtlConfig};
+use crate::deploy::gui::deploy_tab;
 
 pub struct AvisaCtlApp {
     pub config: AvisaCtlConfig,
     pub current_tab: Tab,
-    pub logs: Vec<String>,
+    pub logs: Arc<Mutex<Vec<String>>>,
     pub project_path: Option<String>,
     pub platform: crate::deploy::logic::Platform,
     pub target: crate::deploy::logic::DeployTarget,
@@ -16,6 +18,8 @@ pub struct AvisaCtlApp {
     pub remote_user: String,
     pub remote_pass: String,
     pub remote_path: String,
+    pub is_deploying: bool,
+    pub cancel_deploy: bool,
 }
 
 #[derive(PartialEq)]
@@ -32,7 +36,7 @@ impl Default for AvisaCtlApp {
         Self {
             config: config.clone(),
             current_tab: Tab::Deploy,
-            logs: vec![],
+            logs: Arc::new(Mutex::new(vec![])),
             project_path: if config.last_local_path.is_empty() {
                 None
             } else {
@@ -44,6 +48,8 @@ impl Default for AvisaCtlApp {
             remote_user: config.last_remote_user.clone(),
             remote_pass: config.last_remote_pass.clone(),
             remote_path: config.last_remote_path.clone(),
+            is_deploying: false,
+            cancel_deploy: false,
         }
     }
 }
