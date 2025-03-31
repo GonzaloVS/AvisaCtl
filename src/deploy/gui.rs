@@ -75,7 +75,6 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                 app.logs.lock().unwrap().clear();
                 app.is_deploying = true;
                 app.cancel_deploy = false;
-                app.logs.lock().unwrap().clear();
 
                 if let Some(path) = &app.project_path {
                     if app.platform != Platform::Linux {

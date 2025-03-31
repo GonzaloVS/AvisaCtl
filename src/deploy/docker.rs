@@ -1,14 +1,21 @@
 use std::fs;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
+use tokio::process::Command;
 
 use crate::deploy::logic::extract_package_name;
+use crate::helper::logger_secure::log;
+
+const DOCKERFILE_TEMPLATE: &str = include_str!("../assets/Dockerfile.template");
 
 pub fn ensure_dockerfile_exists(project_path: &str, logs: &mut Vec<String>) -> bool {
     let pkg_name = match extract_package_name(&Path::new(project_path).join("Cargo.toml")) {
         Some(name) => name,
         None => {
-            logs.push("No se pudo leer el nombre del paquete para generar Dockerfile.".to_string());
+            log(
+                logs,
+                "No se pudo leer el nombre del paquete para generar Dockerfile.",
+            );
             return false;
         }
     };
@@ -17,31 +24,23 @@ pub fn ensure_dockerfile_exists(project_path: &str, logs: &mut Vec<String>) -> b
     let dockerfile_path = Path::new(project_path).join(&dockerfile_name);
 
     if dockerfile_path.exists() {
-        logs.push(format!("{} ya existe.", dockerfile_name));
+        log(logs, format!("{} ya existe.", dockerfile_name));
         return true;
     }
 
-    let dockerfile_contents = r#"
-FROM rust:latest
-
-RUN apt update && apt install -y \
-    build-essential \
-    pkg-config \
-    libssl-dev \
-    libclang-dev \
-    curl \
-    && cargo install cargo-audit
-
-WORKDIR /project
-"#;
-
-    match fs::write(&dockerfile_path, dockerfile_contents.trim_start()) {
+    match fs::write(&dockerfile_path, DOCKERFILE_TEMPLATE.trim_start()) {
         Ok(_) => {
-            logs.push(format!("{} generado automáticamente.", dockerfile_name));
+            log(
+                logs,
+                format!("{} generado automáticamente.", dockerfile_name),
+            );
             true
         }
         Err(e) => {
-            logs.push(format!("No se pudo crear {}: {}", dockerfile_name, e));
+            log(
+                logs,
+                format!("No se pudo crear {}: {}", dockerfile_name, e),
+            );
             false
         }
     }
@@ -60,7 +59,7 @@ fn convert_windows_path_for_docker(path: &str) -> String {
     path.to_string()
 }
 
-pub fn build_with_docker(project_path: &str, logs: &mut Vec<String>) -> bool {
+pub async fn build_with_docker(project_path: &str, logs: &mut Vec<String>) -> bool {
     let abs_path_buf = Path::new(project_path)
         .canonicalize()
         .unwrap_or_else(|_| Path::new(project_path).to_path_buf());
@@ -70,7 +69,7 @@ pub fn build_with_docker(project_path: &str, logs: &mut Vec<String>) -> bool {
     let pkg_name = match extract_package_name(&Path::new(project_path).join("Cargo.toml")) {
         Some(name) => name,
         None => {
-            logs.push("No se pudo leer el nombre del paquete.".to_string());
+            log(logs, "No se pudo leer el nombre del paquete.");
             return false;
         }
     };
@@ -78,7 +77,7 @@ pub fn build_with_docker(project_path: &str, logs: &mut Vec<String>) -> bool {
     let dockerfile_name = format!("Dockerfile.{}", pkg_name);
     let image_name = format!("{}-build", pkg_name.to_lowercase());
 
-    logs.push(format!("Construyendo imagen Docker '{}'", image_name));
+    log(logs, format!("Construyendo imagen Docker '{}'", image_name));
 
     let build_result = Command::new("docker")
         .arg("build")
@@ -89,25 +88,26 @@ pub fn build_with_docker(project_path: &str, logs: &mut Vec<String>) -> bool {
         .arg(&abs_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output();
+        .output()
+        .await;
 
     match build_result {
         Ok(output) => {
             if output.status.success() {
-                logs.push("Imagen Docker construida correctamente.".to_string());
+                log(logs, "Imagen Docker construida correctamente.");
             } else {
-                logs.push("Falló la construcción de la imagen Docker:".to_string());
-                logs.push(String::from_utf8_lossy(&output.stderr).to_string());
+                log(logs, "Falló la construcción de la imagen Docker:");
+                log(logs, String::from_utf8_lossy(&output.stderr));
                 return false;
             }
         }
         Err(e) => {
-            logs.push(format!("Error ejecutando docker build: {}", e));
+            log(logs, format!("Error ejecutando docker build: {}", e));
             return false;
         }
     }
 
-    logs.push("Lanzando contenedor para compilar el binario...".to_string());
+    log(logs, "Lanzando contenedor para compilar el binario...");
 
     let run_result = Command::new("docker")
         .arg("run")
@@ -134,21 +134,22 @@ pub fn build_with_docker(project_path: &str, logs: &mut Vec<String>) -> bool {
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output();
+        .output()
+        .await;
 
     match run_result {
         Ok(output) => {
             if output.status.success() {
-                logs.push("Build en Docker completado con éxito.".to_string());
+                log(logs, "Build en Docker completado con éxito.");
                 true
             } else {
-                logs.push("Build en Docker falló:".to_string());
-                logs.push(String::from_utf8_lossy(&output.stderr).to_string());
+                log(logs, "Build en Docker falló:");
+                log(logs, String::from_utf8_lossy(&output.stderr));
                 false
             }
         }
         Err(e) => {
-            logs.push(format!("Error al ejecutar Docker run: {}", e));
+            log(logs, format!("Error al ejecutar Docker run: {}", e));
             false
         }
     }

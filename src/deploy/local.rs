@@ -1,45 +1,46 @@
 use chrono::Local;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
+use tokio::process::Command;
 
 use crate::deploy::docker::build_with_docker;
 use crate::deploy::docker::ensure_dockerfile_exists;
 use crate::deploy::logic::{extract_package_name, Platform};
+use crate::helper::logger_secure::log;
 
-fn run_cargo_step(
+async fn run_cargo_step(
     step_name: &str,
     command: &mut Command,
     logs: &mut Vec<String>,
     project_path: &str,
 ) -> bool {
-    logs.push(format!("Ejecutando '{}'...", step_name));
-    let output = command.current_dir(project_path).output();
+    log(logs, format!("Ejecutando '{}'...", step_name));
+    let output = command.current_dir(project_path).output().await;
 
     match output {
         Ok(output) => {
             if output.status.success() {
-                logs.push(format!("{} completado con éxito.", step_name));
+                log(logs, format!("{} completado con éxito.", step_name));
                 true
             } else {
-                logs.push(format!("{} falló:", step_name));
-                logs.push(format!("{}", String::from_utf8_lossy(&output.stdout)));
+                log(logs, format!("{} falló:", step_name));
+                log(logs, String::from_utf8_lossy(&output.stdout));
                 false
             }
         }
         Err(e) => {
-            logs.push(format!("Error al ejecutar '{}': {}", step_name, e));
+            log(logs, format!("Error al ejecutar '{}': {}", step_name, e));
             false
         }
     }
 }
 
-pub fn run_pre_release_checks(
+pub async fn run_pre_release_checks(
     project_path: &str,
     logs: &mut Vec<String>,
     _platform: &Platform,
 ) -> bool {
-    logs.push("Iniciando verificaciones antes del release...".to_string());
+    log(logs, "Iniciando verificaciones antes del release...");
 
     let steps: Vec<(&str, Command)> = vec![
         ("cargo fmt --check", {
@@ -65,21 +66,27 @@ pub fn run_pre_release_checks(
     ];
 
     for (name, mut command) in steps {
-        if !run_cargo_step(name, &mut command, logs, project_path) {
-            logs.push("Fallo en la validación.".to_string());
+        if !run_cargo_step(name, &mut command, logs, project_path).await {
+            log(logs, "Fallo en la validación.");
             return false;
         }
     }
 
-    logs.push("Validación completada. Verificando Dockerfile...".to_string());
+    log(logs, "Validación completada. Verificando Dockerfile...");
 
     if !ensure_dockerfile_exists(project_path, logs) {
-        logs.push("No se pudo crear/verificar el Dockerfile. Se cancela el build.".to_string());
+        log(
+            logs,
+            "No se pudo crear/verificar el Dockerfile. Se cancela el build.",
+        );
         return false;
     }
 
-    logs.push("Dockerfile verificado. Procediendo al build en Docker...".to_string());
-    build_with_docker(project_path, logs)
+    log(
+        logs,
+        "Dockerfile verificado. Procediendo al build en Docker...",
+    );
+    build_with_docker(project_path, logs).await
 }
 
 pub fn rename_previous_binary_if_exists(
@@ -90,7 +97,7 @@ pub fn rename_previous_binary_if_exists(
     let pkg_name = match extract_package_name(&Path::new(project_path).join("Cargo.toml")) {
         Some(name) => name,
         None => {
-            logs.push("No se pudo leer el nombre del paquete.".to_string());
+            log(logs, "No se pudo leer el nombre del paquete.");
             return None;
         }
     };
@@ -121,16 +128,16 @@ pub fn rename_previous_binary_if_exists(
         let new_path = bin_path.with_file_name(new_name.clone());
 
         if let Err(e) = fs::rename(&bin_path, &new_path) {
-            logs.push(format!("Error al renombrar binario previo: {}", e));
+            log(logs, format!("Error al renombrar binario previo: {}", e));
             return None;
         }
 
-        logs.push(format!(
-            "Binario anterior renombrado como: {}",
-            new_path.display()
-        ));
+        log(
+            logs,
+            format!("Binario anterior renombrado como: {}", new_path.display()),
+        );
     } else {
-        logs.push("No había binario anterior que renombrar.".to_string());
+        log(logs, "No había binario anterior que renombrar.");
     }
 
     Some(pkg_name)

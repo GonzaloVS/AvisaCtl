@@ -2,12 +2,13 @@ mod app;
 mod backup;
 mod config;
 mod deploy;
+mod helper;
 mod logview;
 mod services;
 
 use eframe::{run_native, NativeOptions};
-
-fn main() -> eframe::Result<()> {
+#[tokio::main]
+async fn main() -> eframe::Result<()> {
     let options = NativeOptions::default();
     run_native(
         "AvisaCtl",

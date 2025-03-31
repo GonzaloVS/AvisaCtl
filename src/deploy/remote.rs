@@ -1,11 +1,11 @@
 use std::path::Path;
-use std::process::Command;
 use std::sync::{Arc, Mutex};
-use std::thread;
+use tokio::process::Command;
 
 use crate::config::{save_config, AvisaCtlConfig};
 use crate::deploy::local::rename_previous_binary_if_exists;
 use crate::deploy::logic::{Platform, RemoteConfig};
+use crate::helper::logger_secure::SecureLogger;
 
 pub fn deploy_to_remote_async(
     project_path: String,
@@ -16,14 +16,11 @@ pub fn deploy_to_remote_async(
     callback: impl Fn(bool) + Send + 'static,
     cancel_flag: Arc<Mutex<bool>>,
 ) {
-    thread::spawn(move || {
-        {
-            let mut logs = logs.lock().unwrap();
-            logs.push(format!(
-                "Iniciando deploy a servidor: {}",
-                remote.server_address
-            ));
-        }
+    tokio::spawn(async move {
+        log(
+            logs,
+            format!("Iniciando deploy a servidor: {}", remote.server_address),
+        );
 
         config.last_local_path = project_path.to_string();
         config.last_server_address = remote.server_address.clone();
@@ -39,18 +36,14 @@ pub fn deploy_to_remote_async(
         ) {
             Some(name) => name,
             None => {
-                logs.lock()
-                    .unwrap()
-                    .push("Error: No se pudo determinar el binario para subir.".to_string());
+                log(logs, "Error: No se pudo determinar el binario para subir.");
                 callback(false);
                 return;
             }
         };
 
         if *cancel_flag.lock().unwrap() {
-            logs.lock()
-                .unwrap()
-                .push("Deploy cancelado por el usuario.".into());
+            log(logs, "Deploy cancelado por el usuario.");
             callback(false);
             return;
         }
@@ -62,9 +55,7 @@ pub fn deploy_to_remote_async(
             .join(&binary_name);
 
         if !bin_path.exists() {
-            logs.lock()
-                .unwrap()
-                .push("El binario no existe tras la compilación.".to_string());
+            log(logs, "El binario no existe tras la compilación.");
             callback(false);
             return;
         }
@@ -73,21 +64,18 @@ pub fn deploy_to_remote_async(
             "{}@{}:{}",
             remote.username, remote.server_address, remote.remote_path
         );
-        logs.lock()
-            .unwrap()
-            .push(format!("Subiendo binario a: {}", remote_dest));
+        log(logs, format!("Subiendo binario a: {}", remote_dest));
 
         let bin_path_string = bin_path.to_string_lossy().to_string();
 
         let output = Command::new("scp")
             .arg(bin_path_string)
             .arg(&remote_dest)
-            .output();
+            .output()
+            .await;
 
         if *cancel_flag.lock().unwrap() {
-            logs.lock()
-                .unwrap()
-                .push("Deploy cancelado por el usuario.".into());
+            log(logs, "Deploy cancelado por el usuario.");
             callback(false);
             return;
         }
@@ -95,22 +83,16 @@ pub fn deploy_to_remote_async(
         match output {
             Ok(output) => {
                 if output.status.success() {
-                    logs.lock()
-                        .unwrap()
-                        .push("Binario subido correctamente.".to_string());
+                    log(logs, "Binario subido correctamente.");
                     callback(true);
                 } else {
-                    logs.lock().unwrap().push("Falló el SCP:".to_string());
-                    logs.lock()
-                        .unwrap()
-                        .push(String::from_utf8_lossy(&output.stderr).to_string());
+                    log(logs, "Falló el SCP:");
+                    log(logs, String::from_utf8_lossy(&output.stderr));
                     callback(false);
                 }
             }
             Err(e) => {
-                logs.lock()
-                    .unwrap()
-                    .push(format!("Error ejecutando SCP: {}", e));
+                log(logs, format!("Error ejecutando SCP: {}", e));
                 callback(false);
             }
         }
