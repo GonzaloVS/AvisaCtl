@@ -7,7 +7,7 @@ pub enum Platform {
     Windows,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum DeployTarget {
     Remote,
     Local,

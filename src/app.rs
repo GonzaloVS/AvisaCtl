@@ -20,6 +20,8 @@ pub struct AvisaCtlApp {
     pub remote_path: String,
     pub is_deploying: bool,
     pub cancel_deploy: bool,
+    pub log_validated: bool,
+    pub log_valid: Option<bool>,
 }
 
 #[derive(PartialEq)]
@@ -50,6 +52,8 @@ impl Default for AvisaCtlApp {
             remote_path: config.last_remote_path.clone(),
             is_deploying: false,
             cancel_deploy: false,
+            log_validated: false,
+            log_valid: None,
         }
     }
 }
