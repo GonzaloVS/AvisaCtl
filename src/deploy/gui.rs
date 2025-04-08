@@ -6,7 +6,7 @@ use chrono::Local;
 use eframe::egui::{self, Context, Margin, RichText};
 use native_dialog::FileDialog;
 use std::sync::{Arc, Mutex};
-use crate::helper::logger_secure::{read_secure_log_formatted, SecureLogger};
+use crate::helper::logger_secure::{log_to_vec, read_secure_log_formatted, SecureLogger};
 
 pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
     egui::CentralPanel::default().show(ctx, |ui| {
@@ -166,13 +166,15 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                     };
 
                     tokio::spawn(async move {
-                        {
-                            let mut logs = logs_arc.lock().unwrap();
-                            logs.push("Iniciando validaciones...".to_string());
-                        }
-                        //Mutex desbloqueado aquí
-                        if run_pre_release_checks(&path, &mut logs_arc.lock().unwrap(), &platform, &secure_logger).await {
+                        log_to_vec(&logs_arc, "Iniciando validaciones...");
 
+                        // Usamos un buffer temporal para logs que luego mergeamos
+                        let mut temp_logs = Vec::new();
+
+                        if run_pre_release_checks(&path, &mut temp_logs, &platform, &secure_logger).await {
+                            for line in temp_logs.drain(..) {
+                                log_to_vec(&logs_arc, line);
+                            }
                             if target == DeployTarget::Remote {
                                 let callback_logs = Arc::clone(&logs_arc);
                                 let app_logs = Arc::clone(&logs_arc);

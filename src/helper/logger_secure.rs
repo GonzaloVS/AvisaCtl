@@ -70,6 +70,12 @@ pub fn log_both(
     secure_logger.log(tag, serde_json::json!({ "message": message }));
 }
 
+pub fn log_to_vec(logs: &Arc<Mutex<Vec<String>>>, message: impl Into<String>) {
+    if let Ok(mut lock) = logs.lock() {
+        lock.push(message.into());
+    }
+}
+
 fn secure_log_path() -> std::path::PathBuf {
     Path::new(LOG_DIR).join(LOG_FILE)
 }

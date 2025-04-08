@@ -11,25 +11,23 @@ async fn run_cargo_step(
     step_name: &str,
     command: &mut Command,
     logs: &mut Vec<String>,
-    project_path: &str,
-    secure_logger: &SecureLogger,
 ) -> bool {
-    log_both(logs, secure_logger, format!("Ejecutando '{}'...", step_name), "precheck_step_start");
-    let output = command.current_dir(project_path).output().await;
+    logs.push(format!("Ejecutando {}...", step_name));
+    let output = command.output().await;
 
     match output {
         Ok(output) => {
             if output.status.success() {
-                log_both(logs, secure_logger, format!("{} completado con éxito.", step_name), "precheck_step_success");
+                logs.push(format!("{} superado.", step_name));
                 true
             } else {
-                log_both(logs, secure_logger, format!("{} falló:", step_name), "precheck_step_failed");
-                log_both(logs, secure_logger, String::from_utf8_lossy(&output.stdout), "precheck_step_stdout");
+                logs.push(format!("{} falló:", step_name));
+                logs.push(String::from_utf8_lossy(&output.stderr).to_string());
                 false
             }
         }
         Err(e) => {
-            log_both(logs, secure_logger, format!("Error al ejecutar '{}': {}", step_name, e), "precheck_step_error");
+            logs.push(format!("Error ejecutando {}: {}", step_name, e));
             false
         }
     }
@@ -38,61 +36,61 @@ async fn run_cargo_step(
 pub async fn run_pre_release_checks(
     project_path: &str,
     logs: &mut Vec<String>,
-    _platform: &Platform,
+    platform: &Platform,
     secure_logger: &SecureLogger,
 ) -> bool {
-    log_both(logs, secure_logger, "Iniciando verificaciones antes del release...", "precheck_start");
+    logs.push("▶ Iniciando validaciones...".to_string());
 
     let steps: Vec<(&str, Command)> = vec![
         ("cargo fmt --check", {
             let mut cmd = Command::new("cargo");
             cmd.arg("fmt").arg("--").arg("--check");
+            cmd.current_dir(project_path);
             cmd
         }),
-        ("cargo clippy -- -D warnings", {
+        ("cargo clippy", {
             let mut cmd = Command::new("cargo");
             cmd.arg("clippy").arg("--").arg("-D").arg("warnings");
+            cmd.current_dir(project_path);
             cmd
         }),
         ("cargo test", {
             let mut cmd = Command::new("cargo");
             cmd.arg("test");
+            cmd.current_dir(project_path);
             cmd
         }),
         ("cargo audit", {
             let mut cmd = Command::new("cargo");
             cmd.arg("audit");
+            cmd.current_dir(project_path);
             cmd
         }),
     ];
 
     for (name, mut command) in steps {
-        if !run_cargo_step(name, &mut command, logs, project_path, secure_logger).await {
-            log_both(logs, secure_logger, "Fallo en la validación.", "precheck_failed");
+        if !run_cargo_step(name, &mut command, logs).await {
+            logs.push("Cancelando proceso por error en validación.".to_string());
             return false;
         }
     }
 
-    log_both(logs, secure_logger, "Validación completada. Verificando Dockerfile...", "precheck_validated");
+    logs.push("Validación completada. Verificando Dockerfile...".to_string());
 
-    if !ensure_dockerfile_exists(project_path, logs, secure_logger) {
-        log_both(
-            logs,
-            secure_logger,
-            "No se pudo crear/verificar el Dockerfile. Se cancela el build.",
-            "dockerfile_verification_failed",
-        );
+    if !ensure_dockerfile_exists(project_path, logs) {
+        logs.push("No se pudo verificar/crear el Dockerfile.".to_string());
         return false;
     }
 
-    log_both(
-        logs,
-        secure_logger,
-        "Dockerfile verificado. Procediendo al build en Docker...",
-        "dockerfile_verified",
-    );
+    logs.push("Dockerfile verificado. Construyendo con Docker...".to_string());
 
-    build_with_docker(project_path, logs, secure_logger).await
+    if build_with_docker(project_path, logs).await {
+        logs.push("Build Docker completado.".to_string());
+        true
+    } else {
+        logs.push("Build Docker falló.".to_string());
+        false
+    }
 }
 
 pub fn rename_previous_binary_if_exists(
