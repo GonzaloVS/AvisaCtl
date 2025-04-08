@@ -13,7 +13,6 @@ pub struct AvisaCtlApp {
     pub logs: Arc<Mutex<Vec<String>>>,
     pub project_path: Option<String>,
     pub platform: crate::deploy::logic::Platform,
-    pub target: crate::deploy::logic::DeployTarget,
     pub server_address: String,
     pub remote_user: String,
     pub remote_pass: String,
@@ -45,7 +44,6 @@ impl Default for AvisaCtlApp {
                 Some(config.last_local_path.clone())
             },
             platform: crate::deploy::logic::Platform::Linux,
-            target: crate::deploy::logic::DeployTarget::Remote,
             server_address: config.last_server_address.clone(),
             remote_user: config.last_remote_user.clone(),
             remote_pass: config.last_remote_pass.clone(),

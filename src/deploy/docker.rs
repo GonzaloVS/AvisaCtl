@@ -4,7 +4,7 @@ use std::process::Stdio;
 use tokio::process::Command;
 
 use crate::deploy::logic::extract_package_name;
-use crate::helper::logger_secure::{log_both, SecureLogger};
+use crate::securelog::logger::SecureLogger;
 
 const DOCKERFILE_TEMPLATE: &str = include_str!("../assets/Dockerfile.template");
 
@@ -16,12 +16,8 @@ pub fn ensure_dockerfile_exists(
     let pkg_name = match extract_package_name(&Path::new(project_path).join("Cargo.toml")) {
         Some(name) => name,
         None => {
-            log_both(
-                logs,
-                secure_logger,
-                "No se pudo leer el nombre del paquete para generar Dockerfile.",
-                "dockerfile_package_error",
-            );
+            logs.push("No se pudo leer el nombre del paquete.".into());
+            secure_logger.log_error("dockerfile_package_error", "No se pudo leer el nombre del paquete para generar Dockerfile.");
             return false;
         }
     };
@@ -30,32 +26,20 @@ pub fn ensure_dockerfile_exists(
     let dockerfile_path = Path::new(project_path).join(&dockerfile_name);
 
     if dockerfile_path.exists() {
-        log_both(
-            logs,
-            secure_logger,
-            format!("{} ya existe.", dockerfile_name),
-            "dockerfile_exists",
-        );
+        logs.push(format!("{} ya existe.", dockerfile_name));
+        secure_logger.log_event("dockerfile_exists", serde_json::json!({ "path": dockerfile_path }));
         return true;
     }
 
     match fs::write(&dockerfile_path, DOCKERFILE_TEMPLATE.trim_start()) {
         Ok(_) => {
-            log_both(
-                logs,
-                secure_logger,
-                format!("{} generado automáticamente.", dockerfile_name),
-                "dockerfile_created",
-            );
+            logs.push(format!("{} generado automáticamente.", dockerfile_name));
+            secure_logger.log_event("dockerfile_created", serde_json::json!({ "path": dockerfile_path }));
             true
         }
         Err(e) => {
-            log_both(
-                logs,
-                secure_logger,
-                format!("No se pudo crear {}: {}", dockerfile_name, e),
-                "dockerfile_creation_failed",
-            );
+            logs.push(format!("No se pudo crear {}: {}", dockerfile_name, e));
+            secure_logger.log_error("dockerfile_creation_failed", &format!("{}: {}", dockerfile_name, e));
             false
         }
     }
@@ -88,7 +72,8 @@ pub async fn build_with_docker(
     let pkg_name = match extract_package_name(&Path::new(project_path).join("Cargo.toml")) {
         Some(name) => name,
         None => {
-            log_both(logs, secure_logger, "No se pudo leer el nombre del paquete.", "docker_package_error");
+            logs.push("No se pudo leer el nombre del paquete.".into());
+            secure_logger.log_error("docker_package_error", "No se pudo leer el nombre del paquete.");
             return false;
         }
     };
@@ -96,12 +81,11 @@ pub async fn build_with_docker(
     let dockerfile_name = format!("Dockerfile.{}", pkg_name);
     let image_name = format!("{}-build", pkg_name.to_lowercase());
 
-    log_both(
-        logs,
-        secure_logger,
-        format!("Construyendo imagen Docker '{}'", image_name),
-        "docker_build_start",
-    );
+    logs.push(format!("Construyendo imagen Docker '{}'", image_name));
+    secure_logger.log_event("docker_build_start", serde_json::json!({
+        "image_name": image_name,
+        "dockerfile": dockerfile_name
+    }));
 
     let build_result = Command::new("docker")
         .arg("build")
@@ -118,49 +102,35 @@ pub async fn build_with_docker(
     match build_result {
         Ok(output) => {
             if output.status.success() {
-                log_both(logs, secure_logger, "Imagen Docker construida correctamente.", "docker_build_success");
+                logs.push("Imagen Docker construida correctamente.".into());
+                secure_logger.log_event("docker_build_success", serde_json::json!({ "image_name": image_name }));
             } else {
-                log_both(logs, secure_logger, "Falló la construcción de la imagen Docker:", "docker_build_failed");
-                log_both(logs, secure_logger, String::from_utf8_lossy(&output.stderr), "docker_build_stderr");
+                logs.push("Falló la construcción de la imagen Docker.".into());
+                secure_logger.log_error("docker_build_failed", &String::from_utf8_lossy(&output.stderr));
                 return false;
             }
         }
         Err(e) => {
-            log_both(logs, secure_logger, format!("Error ejecutando docker build: {}", e), "docker_build_error");
+            logs.push(format!("Error ejecutando docker build: {}", e));
+            secure_logger.log_error("docker_build_error", &e.to_string());
             return false;
         }
     }
 
-    log_both(
-        logs,
-        secure_logger,
-        "Lanzando contenedor para compilar el binario...",
-        "docker_run_start",
-    );
+    logs.push("Lanzando contenedor para compilar el binario...".into());
+    secure_logger.log_event("docker_run_start", serde_json::json!({ "image_name": image_name }));
 
     let run_result = Command::new("docker")
         .arg("run")
         .arg("--rm")
         .arg("-v")
-        .arg(format!(
-            "{}:/project",
-            convert_windows_path_for_docker(&abs_path)
-        ))
+        .arg(format!("{}/:/project", convert_windows_path_for_docker(&abs_path)))
         .arg("-v")
-        .arg(format!(
-            "{}/target:/project/target",
-            convert_windows_path_for_docker(&abs_path)
-        ))
+        .arg(format!("{}/target:/project/target", convert_windows_path_for_docker(&abs_path)))
         .arg("-w")
         .arg("/project")
         .arg(&image_name)
-        .args([
-            "cargo",
-            "build",
-            "--release",
-            "--target",
-            "x86_64-unknown-linux-gnu",
-        ])
+        .args(["cargo", "build", "--release", "--target", "x86_64-unknown-linux-gnu"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -169,16 +139,18 @@ pub async fn build_with_docker(
     match run_result {
         Ok(output) => {
             if output.status.success() {
-                log_both(logs, secure_logger, "Build en Docker completado con éxito.", "docker_run_success");
+                logs.push("Build en Docker completado con éxito.".into());
+                secure_logger.log_event("docker_run_success", serde_json::json!({ "image": image_name }));
                 true
             } else {
-                log_both(logs, secure_logger, "Build en Docker falló:", "docker_run_failed");
-                log_both(logs, secure_logger, String::from_utf8_lossy(&output.stderr), "docker_run_stderr");
+                logs.push("Build en Docker falló.".into());
+                secure_logger.log_error("docker_run_failed", &String::from_utf8_lossy(&output.stderr));
                 false
             }
         }
         Err(e) => {
-            log_both(logs, secure_logger, format!("Error al ejecutar Docker run: {}", e), "docker_run_error");
+            logs.push(format!("Error al ejecutar Docker run: {}", e));
+            secure_logger.log_error("docker_run_error", &e.to_string());
             false
         }
     }

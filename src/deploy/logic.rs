@@ -7,12 +7,6 @@ pub enum Platform {
     Windows,
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub enum DeployTarget {
-    Remote,
-    Local,
-}
-
 #[derive(Debug)]
 pub struct RemoteConfig {
     pub server_address: String,
