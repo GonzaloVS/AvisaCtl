@@ -24,6 +24,15 @@ impl SecureLogger {
         }
     }
 
+    pub fn new_with_path(path: &Path) -> Self {
+        fs::create_dir_all(path.parent().unwrap()).expect("No se pudo crear directorio para secure.log");
+        initialize_secure_log_if_needed(path);
+        Self {
+            last_hash: Arc::new(Mutex::new(read_last_hash(path))),
+            log_path: path.to_path_buf(),
+        }
+    }
+
     pub fn log(&self, event: &str, details: serde_json::Value) {
         let now = chrono::Utc::now().to_rfc3339();
         let prev_hash = self.last_hash.lock().unwrap().clone();

@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use crate::app::AvisaCtlApp;
 use crate::deploy::preflight::run_preflight;
 use crate::deploy::logic::{Platform, RemoteConfig};
@@ -14,16 +15,69 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
         ui.heading("Deploy Canary");
         ui.add_space(8.0);
 
-        if app.log_validated == false {
+        // if app.log_validated == false {
+        //     app.log_validated = true;
+        //
+        //     match crate::securelog::validate_secure_log_integrity() {
+        //         Ok(_) => {
+        //             app.logs.lock().unwrap().push("Secure.log íntegro al iniciar la app.".to_string());
+        //             app.log_valid = Some(true);
+        //         }
+        //         Err(e) => {
+        //             app.logs.lock().unwrap().push(format!("Secure.log corrupto: {}", e));
+        //             app.log_valid = Some(false);
+        //         }
+        //     }
+        // }
+
+        if !app.log_validated {
             app.log_validated = true;
 
-            match crate::securelog::validate_secure_log_integrity() {
+            // 1. Si no hay ruta guardada, pedimos una carpeta
+            if app.config.secure_log_path.is_none() {
+                if let Some(folder) = FileDialog::new()
+                    .set_title("Selecciona la carpeta donde guardar secure.log")
+                    .show_open_single_dir()
+                    .ok()
+                    .flatten()
+                {
+                    let path_str = folder.display().to_string();
+                    let mut new_config = app.config.clone();
+                    new_config.secure_log_path = Some(path_str.clone());
+
+                    if let Err(e) = crate::config::save_config(&new_config) {
+                        app.logs.lock().unwrap().push(format!("Error guardando configuración: {e}"));
+                        app.log_valid = Some(false);
+                        return;
+                    }
+
+                    app.config = new_config;
+                    app.logs.lock().unwrap().push(format!("Ruta de secure.log guardada: {}", path_str));
+                } else {
+                    app.logs.lock().unwrap().push("No se seleccionó una carpeta para el secure.log.".to_string());
+                    app.log_valid = Some(false);
+                    return;
+                }
+            }
+
+            // 2. Ya tenemos la ruta, la usamos
+            let log_folder = app.config.secure_log_path.as_ref().unwrap();
+
+            // 3. Intentamos inicializar el archivo si no existe
+            if let Err(e) = crate::securelog::ensure_secure_log_initialized_at(log_folder) {
+                app.logs.lock().unwrap().push(format!("Error al inicializar secure.log: {e}"));
+                app.log_valid = Some(false);
+                return;
+            }
+
+            // 4. Validamos el secure.log existente
+            match crate::securelog::validate_secure_log_integrity_at(log_folder) {
                 Ok(_) => {
-                    app.logs.lock().unwrap().push("Secure.log íntegro al iniciar la app.".to_string());
+                    app.logs.lock().unwrap().push("secure.log verificado: íntegro.".to_string());
                     app.log_valid = Some(true);
                 }
                 Err(e) => {
-                    app.logs.lock().unwrap().push(format!("Secure.log corrupto: {}", e));
+                    app.logs.lock().unwrap().push(format!("secure.log corrupto: {e}"));
                     app.log_valid = Some(false);
                 }
             }
@@ -107,7 +161,13 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                 app.is_deploying = true;
                 app.cancel_deploy = false;
 
-                let validation = crate::securelog::validate_secure_log_integrity();
+
+                let log_path = {
+                    let mut p = PathBuf::from(app.config.secure_log_path.as_ref().unwrap());
+                    p.push("secure.log");
+                    p
+                };
+                let validation = crate::securelog::validate_secure_log_integrity_path(&log_path);
                 if let Err(e) = validation {
                     app.logs.lock().unwrap().push(format!("No se puede continuar: secure.log inválido.\n{}", e));
                     return;
@@ -140,6 +200,7 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                         username: app.remote_user.clone(),
                         pass: app.remote_pass.clone(),
                         remote_path: app.remote_path.clone(),
+                        secure_log_path: app.secure_log_path.clone(),
                     };
 
                     tokio::spawn(async move {
@@ -213,7 +274,13 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
             ui.label(RichText::new("Secure Log (hash encadenado)").strong());
 
             if ui.button("Validar integridad").clicked() {
-                match crate::securelog::validate_secure_log_integrity() {
+
+                let log_path = {
+                    let mut p = PathBuf::from(app.config.secure_log_path.as_ref().unwrap());
+                    p.push("secure.log");
+                    p
+                };
+                match crate::securelog::validate_secure_log_integrity_path(&log_path) {
                     Ok(_) => {
                         app.logs.lock().unwrap().push("El secure.log es íntegro.".to_string());
                     }

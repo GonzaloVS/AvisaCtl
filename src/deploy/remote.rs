@@ -29,7 +29,8 @@ pub fn deploy_to_remote_async(
         config.last_remote_user = remote.username.clone();
         config.last_remote_pass = remote.pass.clone();
         config.last_remote_path = remote.remote_path.clone();
-        save_config(&config);
+        config.secure_log_path = remote.secure_log_path.clone();
+        let _ = save_config(&config);
 
         let binary_name = match rename_previous_binary(
             &project_path,

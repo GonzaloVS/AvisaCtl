@@ -13,6 +13,7 @@ pub struct RemoteConfig {
     pub username: String,
     pub pass: String,
     pub remote_path: String,
+    pub secure_log_path: Option<String>,
 }
 
 pub fn extract_package_name(cargo_toml_path: &Path) -> Option<String> {

@@ -1,11 +1,11 @@
 use crate::securelog::entry::SecureLogEntry;
-use crate::securelog::file::resolve_log_path;
 use sha2::{Digest, Sha256};
 use serde_json::json;
 use std::fs;
+use std::path::{Path, PathBuf};
+use crate::securelog::logger::SecureLogger;
 
-pub fn validate_secure_log_integrity() -> Result<(), String> {
-    let path = resolve_log_path();
+pub fn validate_secure_log_integrity_path(path: &Path) -> Result<(), String> {
     let content = fs::read_to_string(path).map_err(|e| format!("Error al leer secure.log: {}", e))?;
     let mut previous_hash = String::new();
 
@@ -47,4 +47,25 @@ pub fn validate_secure_log_integrity() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Crea el secure.log con entrada inicial si aún no existe
+pub fn ensure_secure_log_initialized_at(folder: &str) -> Result<(), String> {
+    let mut path = PathBuf::from(folder);
+    path.push("secure.log");
+
+    if !path.exists() {
+        SecureLogger::new_with_path(&path)
+            .log("secure.log inicializado", serde_json::json!({}));
+    }
+
+    Ok(())
+}
+
+/// Valida la integridad de un secure.log desde una carpeta específica
+pub fn validate_secure_log_integrity_at(folder: &str) -> Result<(), String> {
+    let mut path = PathBuf::from(folder);
+    path.push("secure.log");
+
+    crate::securelog::validate_secure_log_integrity_path(&path)
 }

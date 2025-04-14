@@ -6,7 +6,7 @@ mod securelog;
 mod logview;
 mod services;
 
-use eframe::{egui, run_native, NativeOptions};
+use eframe::{run_native, NativeOptions};
 use eframe::egui::ViewportBuilder;
 use crate::app::AvisaCtlApp;
 //#[tokio::main]
