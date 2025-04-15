@@ -1,12 +1,13 @@
 use crate::securelog::entry::SecureLogEntry;
-use sha2::{Digest, Sha256};
+use crate::securelog::logger::SecureLogger;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
-use crate::securelog::logger::SecureLogger;
 
 pub fn validate_secure_log_integrity_path(path: &Path) -> Result<(), String> {
-    let content = fs::read_to_string(path).map_err(|e| format!("Error al leer secure.log: {}", e))?;
+    let content =
+        fs::read_to_string(path).map_err(|e| format!("Error al leer secure.log: {}", e))?;
     let mut previous_hash = String::new();
 
     for (line_num, line) in content.lines().enumerate() {
@@ -55,8 +56,7 @@ pub fn ensure_secure_log_initialized_at(folder: &str) -> Result<(), String> {
     path.push("secure.log");
 
     if !path.exists() {
-        SecureLogger::new_with_path(&path)
-            .log("secure.log inicializado", serde_json::json!({}));
+        SecureLogger::new_with_path(&path).log("secure.log inicializado", serde_json::json!({}));
     }
 
     Ok(())

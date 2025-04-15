@@ -1,11 +1,11 @@
+use serde_json::json;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use serde_json::json;
 use tokio::process::Command;
 
 use crate::config::{save_config, AvisaCtlConfig};
-use crate::deploy::preflight::rename_previous_binary;
 use crate::deploy::logic::{Platform, RemoteConfig};
+use crate::deploy::preflight::rename_previous_binary;
 use crate::securelog::logger::SecureLogger;
 
 pub fn deploy_to_remote_async(
@@ -18,11 +18,14 @@ pub fn deploy_to_remote_async(
     secure_logger: Arc<SecureLogger>,
 ) {
     tokio::spawn(async move {
-        secure_logger.log_event("deploy_start", json!({
-            "project_path": project_path,
-            "server": remote.server_address,
-            "user": remote.username
-        }));
+        secure_logger.log_event(
+            "deploy_start",
+            json!({
+                "project_path": project_path,
+                "server": remote.server_address,
+                "user": remote.username
+            }),
+        );
 
         config.last_local_path = project_path.to_string();
         config.last_server_address = remote.server_address.clone();
@@ -32,11 +35,7 @@ pub fn deploy_to_remote_async(
         config.secure_log_path = remote.secure_log_path.clone();
         let _ = save_config(&config);
 
-        let binary_name = match rename_previous_binary(
-            &project_path,
-            &platform,
-            &secure_logger,
-        ) {
+        let binary_name = match rename_previous_binary(&project_path, &platform, &secure_logger) {
             Some(name) => name,
             None => {
                 secure_logger.log_error("deploy_fail_binary_name", "rename_previous_binary failed");
@@ -58,7 +57,10 @@ pub fn deploy_to_remote_async(
             .join(&binary_name);
 
         if !bin_path.exists() {
-            secure_logger.log_error("deploy_fail_no_binary", &format!("No existe binario en: {}", bin_path.to_string_lossy()));
+            secure_logger.log_error(
+                "deploy_fail_no_binary",
+                &format!("No existe binario en: {}", bin_path.to_string_lossy()),
+            );
             callback(false);
             return;
         }
@@ -67,10 +69,13 @@ pub fn deploy_to_remote_async(
             "{}@{}:{}",
             remote.username, remote.server_address, remote.remote_path
         );
-        secure_logger.log_event("deploy_scp_start", json!({
-            "source": bin_path.to_string_lossy(),
-            "destination": remote_dest
-        }));
+        secure_logger.log_event(
+            "deploy_scp_start",
+            json!({
+                "source": bin_path.to_string_lossy(),
+                "destination": remote_dest
+            }),
+        );
 
         let bin_path_string = bin_path.to_string_lossy().to_string();
 
@@ -89,9 +94,12 @@ pub fn deploy_to_remote_async(
         match output {
             Ok(output) => {
                 if output.status.success() {
-                    secure_logger.log_event("deploy_scp_success", json!({
-                        "destination": remote_dest
-                    }));
+                    secure_logger.log_event(
+                        "deploy_scp_success",
+                        json!({
+                            "destination": remote_dest
+                        }),
+                    );
                     callback(true);
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
