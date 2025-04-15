@@ -1,5 +1,5 @@
-use std::process::Command;
 use std::io::Write;
+use std::process::Command;
 
 pub fn sign_with_gpg(data: &str) -> Result<String, String> {
     let output = Command::new("gpg")

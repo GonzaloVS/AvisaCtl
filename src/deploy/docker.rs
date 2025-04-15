@@ -17,7 +17,10 @@ pub fn ensure_dockerfile_exists(
         Some(name) => name,
         None => {
             logs.push("No se pudo leer el nombre del paquete.".into());
-            secure_logger.log_error("dockerfile_package_error", "No se pudo leer el nombre del paquete para generar Dockerfile.");
+            secure_logger.log_error(
+                "dockerfile_package_error",
+                "No se pudo leer el nombre del paquete para generar Dockerfile.",
+            );
             return false;
         }
     };
@@ -27,19 +30,28 @@ pub fn ensure_dockerfile_exists(
 
     if dockerfile_path.exists() {
         logs.push(format!("{} ya existe.", dockerfile_name));
-        secure_logger.log_event("dockerfile_exists", serde_json::json!({ "path": dockerfile_path }));
+        secure_logger.log_event(
+            "dockerfile_exists",
+            serde_json::json!({ "path": dockerfile_path }),
+        );
         return true;
     }
 
     match fs::write(&dockerfile_path, DOCKERFILE_TEMPLATE.trim_start()) {
         Ok(_) => {
             logs.push(format!("{} generado automáticamente.", dockerfile_name));
-            secure_logger.log_event("dockerfile_created", serde_json::json!({ "path": dockerfile_path }));
+            secure_logger.log_event(
+                "dockerfile_created",
+                serde_json::json!({ "path": dockerfile_path }),
+            );
             true
         }
         Err(e) => {
             logs.push(format!("No se pudo crear {}: {}", dockerfile_name, e));
-            secure_logger.log_error("dockerfile_creation_failed", &format!("{}: {}", dockerfile_name, e));
+            secure_logger.log_error(
+                "dockerfile_creation_failed",
+                &format!("{}: {}", dockerfile_name, e),
+            );
             false
         }
     }
@@ -73,7 +85,10 @@ pub async fn build_with_docker(
         Some(name) => name,
         None => {
             logs.push("No se pudo leer el nombre del paquete.".into());
-            secure_logger.log_error("docker_package_error", "No se pudo leer el nombre del paquete.");
+            secure_logger.log_error(
+                "docker_package_error",
+                "No se pudo leer el nombre del paquete.",
+            );
             return false;
         }
     };
@@ -82,10 +97,13 @@ pub async fn build_with_docker(
     let image_name = format!("{}-build", pkg_name.to_lowercase());
 
     logs.push(format!("Construyendo imagen Docker '{}'", image_name));
-    secure_logger.log_event("docker_build_start", serde_json::json!({
-        "image_name": image_name,
-        "dockerfile": dockerfile_name
-    }));
+    secure_logger.log_event(
+        "docker_build_start",
+        serde_json::json!({
+            "image_name": image_name,
+            "dockerfile": dockerfile_name
+        }),
+    );
 
     let build_result = Command::new("docker")
         .arg("build")
@@ -103,10 +121,16 @@ pub async fn build_with_docker(
         Ok(output) => {
             if output.status.success() {
                 logs.push("Imagen Docker construida correctamente.".into());
-                secure_logger.log_event("docker_build_success", serde_json::json!({ "image_name": image_name }));
+                secure_logger.log_event(
+                    "docker_build_success",
+                    serde_json::json!({ "image_name": image_name }),
+                );
             } else {
                 logs.push("Falló la construcción de la imagen Docker.".into());
-                secure_logger.log_error("docker_build_failed", &String::from_utf8_lossy(&output.stderr));
+                secure_logger.log_error(
+                    "docker_build_failed",
+                    &String::from_utf8_lossy(&output.stderr),
+                );
                 return false;
             }
         }
@@ -118,19 +142,34 @@ pub async fn build_with_docker(
     }
 
     logs.push("Lanzando contenedor para compilar el binario...".into());
-    secure_logger.log_event("docker_run_start", serde_json::json!({ "image_name": image_name }));
+    secure_logger.log_event(
+        "docker_run_start",
+        serde_json::json!({ "image_name": image_name }),
+    );
 
     let run_result = Command::new("docker")
         .arg("run")
         .arg("--rm")
         .arg("-v")
-        .arg(format!("{}/:/project", convert_windows_path_for_docker(&abs_path)))
+        .arg(format!(
+            "{}/:/project",
+            convert_windows_path_for_docker(&abs_path)
+        ))
         .arg("-v")
-        .arg(format!("{}/target:/project/target", convert_windows_path_for_docker(&abs_path)))
+        .arg(format!(
+            "{}/target:/project/target",
+            convert_windows_path_for_docker(&abs_path)
+        ))
         .arg("-w")
         .arg("/project")
         .arg(&image_name)
-        .args(["cargo", "build", "--release", "--target", "x86_64-unknown-linux-gnu"])
+        .args([
+            "cargo",
+            "build",
+            "--release",
+            "--target",
+            "x86_64-unknown-linux-gnu",
+        ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -140,11 +179,17 @@ pub async fn build_with_docker(
         Ok(output) => {
             if output.status.success() {
                 logs.push("Build en Docker completado con éxito.".into());
-                secure_logger.log_event("docker_run_success", serde_json::json!({ "image": image_name }));
+                secure_logger.log_event(
+                    "docker_run_success",
+                    serde_json::json!({ "image": image_name }),
+                );
                 true
             } else {
                 logs.push("Build en Docker falló.".into());
-                secure_logger.log_error("docker_run_failed", &String::from_utf8_lossy(&output.stderr));
+                secure_logger.log_error(
+                    "docker_run_failed",
+                    &String::from_utf8_lossy(&output.stderr),
+                );
                 false
             }
         }

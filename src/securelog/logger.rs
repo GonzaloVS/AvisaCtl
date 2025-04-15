@@ -1,4 +1,4 @@
-use crate::securelog::crypto::{sign_with_gpg, fetch_tsa_timestamp};
+use crate::securelog::crypto::{fetch_tsa_timestamp, sign_with_gpg};
 use crate::securelog::entry::SecureLogEntry;
 use crate::securelog::file::{read_last_hash, resolve_log_path};
 use serde_json::json;
@@ -25,7 +25,8 @@ impl SecureLogger {
     }
 
     pub fn new_with_path(path: &Path) -> Self {
-        fs::create_dir_all(path.parent().unwrap()).expect("No se pudo crear directorio para secure.log");
+        fs::create_dir_all(path.parent().unwrap())
+            .expect("No se pudo crear directorio para secure.log");
         initialize_secure_log_if_needed(path);
         Self {
             last_hash: Arc::new(Mutex::new(read_last_hash(path))),
@@ -71,19 +72,24 @@ impl SecureLogger {
     }
 
     pub fn log_event(&self, tag: &str, payload: serde_json::Value) {
-        self.log(tag, json!({
-        "level": "info",
-        "payload": payload
-    }));
+        self.log(
+            tag,
+            json!({
+                "level": "info",
+                "payload": payload
+            }),
+        );
     }
 
     pub fn log_error(&self, tag: &str, description: &str) {
-        self.log(tag, json!({
-        "level": "error",
-        "message": description
-    }));
+        self.log(
+            tag,
+            json!({
+                "level": "error",
+                "message": description
+            }),
+        );
     }
-
 }
 
 fn initialize_secure_log_if_needed(path: &Path) {
@@ -117,6 +123,7 @@ fn initialize_secure_log_if_needed(path: &Path) {
     fs::create_dir_all(path.parent().unwrap()).expect("No se pudo crear directorio del log");
     let mut file = OpenOptions::new()
         .create(true)
+        .truncate(true)
         .write(true)
         .open(path)
         .expect("No se pudo crear secure.log inicial");

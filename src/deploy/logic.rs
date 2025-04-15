@@ -7,7 +7,7 @@ pub enum Platform {
     Windows,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RemoteConfig {
     pub server_address: String,
     pub username: String,

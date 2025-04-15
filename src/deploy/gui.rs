@@ -1,14 +1,14 @@
-use std::path::PathBuf;
 use crate::app::AvisaCtlApp;
-use crate::deploy::preflight::run_preflight;
 use crate::deploy::logic::{Platform, RemoteConfig};
+use crate::deploy::preflight::run_preflight;
 use crate::deploy::remote::deploy_to_remote_async;
+use crate::securelog::logger::SecureLogger;
+use crate::securelog::read_secure_log_formatted;
 use chrono::Local;
 use eframe::egui::{self, Context, Margin, RichText};
 use native_dialog::FileDialog;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use crate::securelog::logger::SecureLogger;
-use crate::securelog::read_secure_log_formatted;
 
 pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
     egui::CentralPanel::default().show(ctx, |ui| {
@@ -46,15 +46,24 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                     new_config.secure_log_path = Some(path_str.clone());
 
                     if let Err(e) = crate::config::save_config(&new_config) {
-                        app.logs.lock().unwrap().push(format!("Error guardando configuración: {e}"));
+                        app.logs
+                            .lock()
+                            .unwrap()
+                            .push(format!("Error guardando configuración: {e}"));
                         app.log_valid = Some(false);
                         return;
                     }
 
                     app.config = new_config;
-                    app.logs.lock().unwrap().push(format!("Ruta de secure.log guardada: {}", path_str));
+                    app.logs
+                        .lock()
+                        .unwrap()
+                        .push(format!("Ruta de secure.log guardada: {}", path_str));
                 } else {
-                    app.logs.lock().unwrap().push("No se seleccionó una carpeta para el secure.log.".to_string());
+                    app.logs
+                        .lock()
+                        .unwrap()
+                        .push("No se seleccionó una carpeta para el secure.log.".to_string());
                     app.log_valid = Some(false);
                     return;
                 }
@@ -65,7 +74,10 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
 
             // 3. Intentamos inicializar el archivo si no existe
             if let Err(e) = crate::securelog::ensure_secure_log_initialized_at(log_folder) {
-                app.logs.lock().unwrap().push(format!("Error al inicializar secure.log: {e}"));
+                app.logs
+                    .lock()
+                    .unwrap()
+                    .push(format!("Error al inicializar secure.log: {e}"));
                 app.log_valid = Some(false);
                 return;
             }
@@ -73,11 +85,17 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
             // 4. Validamos el secure.log existente
             match crate::securelog::validate_secure_log_integrity_at(log_folder) {
                 Ok(_) => {
-                    app.logs.lock().unwrap().push("secure.log verificado: íntegro.".to_string());
+                    app.logs
+                        .lock()
+                        .unwrap()
+                        .push("secure.log verificado: íntegro.".to_string());
                     app.log_valid = Some(true);
                 }
                 Err(e) => {
-                    app.logs.lock().unwrap().push(format!("secure.log corrupto: {e}"));
+                    app.logs
+                        .lock()
+                        .unwrap()
+                        .push(format!("secure.log corrupto: {e}"));
                     app.log_valid = Some(false);
                 }
             }
@@ -161,7 +179,6 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                 app.is_deploying = true;
                 app.cancel_deploy = false;
 
-
                 let log_path = {
                     let mut p = PathBuf::from(app.config.secure_log_path.as_ref().unwrap());
                     p.push("secure.log");
@@ -169,7 +186,10 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                 };
                 let validation = crate::securelog::validate_secure_log_integrity_path(&log_path);
                 if let Err(e) = validation {
-                    app.logs.lock().unwrap().push(format!("No se puede continuar: secure.log inválido.\n{}", e));
+                    app.logs.lock().unwrap().push(format!(
+                        "No se puede continuar: secure.log inválido.\n{}",
+                        e
+                    ));
                     return;
                 }
 
@@ -177,12 +197,21 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
 
                 if let Some(path) = &app.project_path {
                     if app.platform != Platform::Linux {
-                        app.logs.lock().unwrap().push("Solo se permite compilar para Linux.".to_string());
+                        app.logs
+                            .lock()
+                            .unwrap()
+                            .push("Solo se permite compilar para Linux.".to_string());
                         return;
                     }
 
-                    app.logs.lock().unwrap().push(format!("Plataforma: {:?}", app.platform));
-                    app.logs.lock().unwrap().push("Destino: Servidor".to_string());
+                    app.logs
+                        .lock()
+                        .unwrap()
+                        .push(format!("Plataforma: {:?}", app.platform));
+                    app.logs
+                        .lock()
+                        .unwrap()
+                        .push("Destino: Servidor".to_string());
                     app.logs.lock().unwrap().push(format!(
                         "Timestamp: {}",
                         Local::now().format("%Y%m%d-%H:%M:%S")
@@ -204,7 +233,10 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                     };
 
                     tokio::spawn(async move {
-                        logs_arc.lock().unwrap().push("Iniciando validaciones...".to_string());
+                        logs_arc
+                            .lock()
+                            .unwrap()
+                            .push("Iniciando validaciones...".to_string());
 
                         let mut temp_logs = Vec::new();
 
@@ -224,7 +256,9 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                                 move |success| {
                                     let mut logs = callback_logs.lock().unwrap();
                                     if success {
-                                        logs.push("Deploy remoto completado con éxito.".to_string());
+                                        logs.push(
+                                            "Deploy remoto completado con éxito.".to_string(),
+                                        );
                                     } else {
                                         logs.push("Error durante el deploy remoto.".to_string());
                                     }
@@ -236,16 +270,25 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                                 secure_logger,
                             );
                         } else {
-                            logs_arc.lock().unwrap().push("Se detuvo el deploy por error previo.".to_string());
+                            logs_arc
+                                .lock()
+                                .unwrap()
+                                .push("Se detuvo el deploy por error previo.".to_string());
                         }
                     });
                 } else {
-                    app.logs.lock().unwrap().push("No se seleccionó ningún proyecto.".to_string());
+                    app.logs
+                        .lock()
+                        .unwrap()
+                        .push("No se seleccionó ningún proyecto.".to_string());
                 }
             }
         } else if ui.button("Cancelar Deploy").clicked() {
             app.cancel_deploy = true;
-            app.logs.lock().unwrap().push("Cancelación solicitada.".into());
+            app.logs
+                .lock()
+                .unwrap()
+                .push("Cancelación solicitada.".into());
         }
 
         ui.add_space(12.0);
@@ -274,7 +317,6 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
             ui.label(RichText::new("Secure Log (hash encadenado)").strong());
 
             if ui.button("Validar integridad").clicked() {
-
                 let log_path = {
                     let mut p = PathBuf::from(app.config.secure_log_path.as_ref().unwrap());
                     p.push("secure.log");
@@ -282,10 +324,16 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                 };
                 match crate::securelog::validate_secure_log_integrity_path(&log_path) {
                     Ok(_) => {
-                        app.logs.lock().unwrap().push("El secure.log es íntegro.".to_string());
+                        app.logs
+                            .lock()
+                            .unwrap()
+                            .push("El secure.log es íntegro.".to_string());
                     }
                     Err(e) => {
-                        app.logs.lock().unwrap().push(format!("Integridad rota: {}", e));
+                        app.logs
+                            .lock()
+                            .unwrap()
+                            .push(format!("Integridad rota: {}", e));
                     }
                 }
             }
