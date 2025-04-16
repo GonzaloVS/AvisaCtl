@@ -1,12 +1,9 @@
 use serde_json::json;
-use serde_json::json;
 use ssh2::Session;
 use std::io::prelude::*;
-use std::net::TcpStream;
+use std::net::{TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use tokio::process::Command;
-//use tokio::process::Command;
 
 use crate::config::{save_config, AvisaCtlConfig};
 use crate::deploy::logic::{Platform, RemoteConfig};
@@ -90,6 +87,7 @@ pub fn deploy_to_remote_async(
         //     .output()
         //     .await;
 
+        let secure_logger_cloned = secure_logger.clone();
         let result = tokio::task::spawn_blocking({
             let remote = remote.clone();
             let bin_path_string = bin_path_string.clone();
@@ -100,6 +98,7 @@ pub fn deploy_to_remote_async(
                     &remote.pass,
                     &bin_path_string,
                     &remote.remote_path,
+                    &secure_logger_cloned,
                 )
             }
         })
@@ -111,27 +110,44 @@ pub fn deploy_to_remote_async(
             return;
         }
 
-        match output {
-            Ok(output) => {
-                if output.status.success() {
-                    secure_logger.log_event(
-                        "deploy_scp_success",
-                        json!({
-                            "destination": remote_dest
-                        }),
-                    );
-                    callback(true);
-                } else {
-                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                    secure_logger.log_error("deploy_scp_failed", &stderr);
-                    callback(false);
-                }
+        match result {
+            Ok(Ok(())) => {
+                secure_logger.log_event("deploy_scp_success", json!({
+            "destination": format!("{}@{}:{}", remote.username, remote.server_address, remote.remote_path)
+        }));
+                callback(true);
+            }
+            Ok(Err(e)) => {
+                secure_logger.log_error("deploy_scp_failed", &format!("Error: {}", e));
+                callback(false);
             }
             Err(join_err) => {
                 secure_logger.log_error("deploy_scp_panic", &format!("Thread panic: {}", join_err));
                 callback(false);
             }
         }
+
+        // match output {
+        //     Ok(output) => {
+        //         if output.status.success() {
+        //             secure_logger.log_event(
+        //                 "deploy_scp_success",
+        //                 json!({
+        //                     "destination": remote_dest
+        //                 }),
+        //             );
+        //             callback(true);
+        //         } else {
+        //             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        //             secure_logger.log_error("deploy_scp_failed", &stderr);
+        //             callback(false);
+        //         }
+        //     }
+        //     Err(join_err) => {
+        //         secure_logger.log_error("deploy_scp_panic", &format!("Thread panic: {}", join_err));
+        //         callback(false);
+        //     }
+        // }
 
         if *cancel_flag.lock().unwrap() {
             secure_logger.log_event("deploy_cancelled", json!({}));
@@ -160,16 +176,18 @@ pub fn deploy_to_remote_async(
     });
 }
 
-
 pub fn upload_file_with_password(
     server: &str,
     username: &str,
     password: &str,
     local_path: &str,
     remote_path: &str,
+    secure_logger: &SecureLogger,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
     // 1. Establecer conexión TCP
-    let tcp = TcpStream::connect(format!("{}:22", server))?;
+    //let tcp = TcpStream::connect(format!("{}:22", server))?;
+    let address = format!("{}:22", server);
+    let tcp = TcpStream::connect_timeout(&address.to_socket_addrs()?.next().unwrap(), std::time::Duration::from_secs(10))?;
 
     // 2. Crear sesión SSH
     let mut session = Session::new()?;
@@ -194,6 +212,13 @@ pub fn upload_file_with_password(
     local_file.read_to_end(&mut buffer)?;
     remote_file.write_all(&buffer)?;
 
-    println!("Archivo subido correctamente a {}", remote_path);
+    //eprintln!("Archivo subido correctamente a {}", remote_path);
+    secure_logger.log_event(
+        "upload_success",
+        json!({
+            "path": remote_path,
+            "message": "Archivo subido correctamente"
+        }),
+    );
     Ok(())
 }

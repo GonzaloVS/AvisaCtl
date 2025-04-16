@@ -36,7 +36,7 @@ impl SecureLogger {
         }
     }
 
-    pub fn log(&self, event: &str, details: serde_json::Value) {
+    pub fn log(&self, event: &str, details: serde_json::Value) -> Result<(), Box<dyn std::error::Error>> {
         let now = chrono::Utc::now().to_rfc3339();
         let prev_hash = self.last_hash.lock().unwrap().clone();
 
@@ -68,9 +68,10 @@ impl SecureLogger {
             .create(true)
             .append(true)
             .open(&self.log_path)
-            .unwrap();
+            .map_err(|e| format!("No se pudo abrir secure.log: {e}"))?;
 
-        writeln!(file, "{}", serde_json::to_string(&full_entry).unwrap()).unwrap();
+        writeln!(file, "{}", serde_json::to_string(&full_entry)?)?;
+        Ok(())
     }
 
     pub fn log_event(&self, tag: &str, payload: serde_json::Value) {

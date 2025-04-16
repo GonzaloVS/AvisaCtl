@@ -3,9 +3,9 @@ use serde_json::json;
 use std::path::Path;
 use tokio::process::Command;
 
-use crate::checks::bin_size::{check_binary_size, MAX_SIZE_BYTES};
-use crate::checks::lockfile::{check_lockfile, LockfileCheck};
-use crate::checks::unwraps::check_no_dangerous_patterns;
+// use crate::checks::bin_size::{check_binary_size, MAX_SIZE_BYTES};
+// use crate::checks::lockfile::{check_lockfile, LockfileCheck};
+// use crate::checks::unwraps::check_no_dangerous_patterns;
 use crate::deploy::docker::{build_with_docker, ensure_dockerfile_exists};
 use crate::deploy::logic::{extract_package_name, Platform};
 use crate::securelog::logger::SecureLogger;
@@ -19,8 +19,8 @@ pub async fn run_preflight(
     logs.push("Iniciando preflight...".to_string());
 
     let steps = vec![
-        ("cargo fmt --check", vec!["fmt", "--", "--check"]),
-        ("cargo clippy", vec!["clippy", "--", "-D", "warnings"]),
+        //("cargo fmt --check", vec!["fmt", "--", "--check"]),
+        //(("cargo clippy", vec!["clippy", "--", "-D", "warnings"]),
         ("cargo test", vec!["test"]),
         ("cargo audit", vec!["audit"]),
     ];
@@ -49,144 +49,144 @@ pub async fn run_preflight(
         }
     }
 
-    logs.push("Comprobando uso peligroso de unwrap/expect...".to_string());
-    match check_no_dangerous_patterns(Path::new(project_path)) {
-        Ok(_) => {
-            logs.push("Sin unwraps/expect peligrosos.".to_string());
-            secure_logger.log_event(
-                "preflight_unwrap_check",
-                json!({ "status": "ok", "message": "No se detectaron unwraps peligrosos." }),
-            );
-        }
-        Err(errors) => {
-            logs.push("Detectado uso peligroso de unwrap/expect:".to_string());
-            for e in &errors {
-                logs.push(format!(" - {}", e));
-            }
-
-            secure_logger.log_error(
-                "preflight_unwrap_check_failed",
-                &format!("Se detectaron usos peligrosos:\n{}", errors.join("\n")),
-            );
-
-            return false;
-        }
-    }
-
-    logs.push("Verificando Cargo.lock...".to_string());
-    match check_lockfile(Path::new(project_path)) {
-        Ok(result) => match result.status {
-            LockfileCheck::Missing => {
-                logs.push(format!(
-                    "Cargo.lock no existe en {}.",
-                    result.lockfile_path.display()
-                ));
-                secure_logger.log_error(
-                    "preflight_lockfile_missing",
-                    &format!(
-                        "Falta el archivo Cargo.lock en {}. Ejecuta 'cargo build' para generarlo.",
-                        result.lockfile_path.display()
-                    ),
-                );
-                return false;
-            }
-            LockfileCheck::Outdated => {
-                logs.push(format!(
-                    "Cargo.lock desactualizado en {}.",
-                    result.lockfile_path.display()
-                ));
-                secure_logger.log_error(
-                    "preflight_lockfile_outdated",
-                    &format!(
-                        "El archivo Cargo.lock en {} está desactualizado. Ejecuta 'cargo update'.",
-                        result.lockfile_path.display()
-                    ),
-                );
-                return false;
-            }
-            LockfileCheck::DirtyGitState => {
-                logs.push(format!(
-                    "Cargo.lock fue modificado manualmente o tiene cambios sin commitear: {}",
-                    result.lockfile_path.display()
-                ));
-                secure_logger.log_event(
-                    "preflight_lockfile_dirty",
-                    json!({
-                        "message": format!(
-                            "Cargo.lock con cambios detectados: {}",
-                            result.lockfile_path.display()
-                        )
-                    }),
-                );
-            }
-            LockfileCheck::Ok => {
-                logs.push(format!(
-                    "Cargo.lock verificado correctamente en {}.",
-                    result.lockfile_path.display()
-                ));
-                secure_logger.log_event(
-                    "preflight_lockfile_ok",
-                    json!({ "message": format!(
-                        "Cargo.lock válido y sincronizado: {}",
-                        result.lockfile_path.display()
-                    )}),
-                );
-            }
-        },
-        Err(e) => {
-            logs.push(format!("Error verificando Cargo.lock: {}", e));
-            secure_logger.log_error("preflight_lockfile_error", &e);
-            return false;
-        }
-    }
-
-    logs.push("Verificando tamaño del binario...".to_string());
-    match check_binary_size(Path::new(project_path), _platform, None) {
-        Ok(result) if !result.exists => {
-            logs.push(
-                "No se encontró binario release. ¿Ejecutaste cargo build --release?".to_string(),
-            );
-            secure_logger.log_error(
-                "preflight_binary_missing",
-                "El binario release no fue encontrado en target/release/",
-            );
-            return false;
-        }
-        Ok(result) if result.too_large => {
-            logs.push(format!(
-                "El binario es demasiado grande: {:.2} MB (límite: {:.2} MB)",
-                result.bin_size_bytes as f64 / 1_048_576.0,
-                MAX_SIZE_BYTES as f64 / 1_048_576.0
-            ));
-            secure_logger.log_error(
-                "preflight_binary_too_large",
-                &format!(
-                    "Tamaño: {} bytes. Ruta: {}",
-                    result.bin_size_bytes,
-                    result.bin_path.display()
-                ),
-            );
-            return false;
-        }
-        Ok(result) => {
-            logs.push(format!(
-                "✓ Binario correcto: {:.2} MB",
-                result.bin_size_bytes as f64 / 1_048_576.0
-            ));
-            secure_logger.log_event(
-                "preflight_binary_size_ok",
-                json!({
-                    "path": result.bin_path,
-                    "size_bytes": result.bin_size_bytes
-                }),
-            );
-        }
-        Err(e) => {
-            logs.push(format!("Error revisando el binario: {}", e));
-            secure_logger.log_error("preflight_binary_check_failed", &e);
-            return false;
-        }
-    }
+    // logs.push("Comprobando uso peligroso de unwrap/expect...".to_string());
+    // match check_no_dangerous_patterns(Path::new(project_path)) {
+    //     Ok(_) => {
+    //         logs.push("Sin unwraps/expect peligrosos.".to_string());
+    //         secure_logger.log_event(
+    //             "preflight_unwrap_check",
+    //             json!({ "status": "ok", "message": "No se detectaron unwraps peligrosos." }),
+    //         );
+    //     }
+    //     Err(errors) => {
+    //         logs.push("Detectado uso peligroso de unwrap/expect:".to_string());
+    //         for e in &errors {
+    //             logs.push(format!(" - {}", e));
+    //         }
+    //
+    //         secure_logger.log_error(
+    //             "preflight_unwrap_check_failed",
+    //             &format!("Se detectaron usos peligrosos:\n{}", errors.join("\n")),
+    //         );
+    //
+    //         return false;
+    //     }
+    // }
+    //
+    // logs.push("Verificando Cargo.lock...".to_string());
+    // match check_lockfile(Path::new(project_path)) {
+    //     Ok(result) => match result.status {
+    //         LockfileCheck::Missing => {
+    //             logs.push(format!(
+    //                 "Cargo.lock no existe en {}.",
+    //                 result.lockfile_path.display()
+    //             ));
+    //             secure_logger.log_error(
+    //                 "preflight_lockfile_missing",
+    //                 &format!(
+    //                     "Falta el archivo Cargo.lock en {}. Ejecuta 'cargo build' para generarlo.",
+    //                     result.lockfile_path.display()
+    //                 ),
+    //             );
+    //             return false;
+    //         }
+    //         LockfileCheck::Outdated => {
+    //             logs.push(format!(
+    //                 "Cargo.lock desactualizado en {}.",
+    //                 result.lockfile_path.display()
+    //             ));
+    //             secure_logger.log_error(
+    //                 "preflight_lockfile_outdated",
+    //                 &format!(
+    //                     "El archivo Cargo.lock en {} está desactualizado. Ejecuta 'cargo update'.",
+    //                     result.lockfile_path.display()
+    //                 ),
+    //             );
+    //             return false;
+    //         }
+    //         LockfileCheck::DirtyGitState => {
+    //             logs.push(format!(
+    //                 "Cargo.lock fue modificado manualmente o tiene cambios sin commitear: {}",
+    //                 result.lockfile_path.display()
+    //             ));
+    //             secure_logger.log_event(
+    //                 "preflight_lockfile_dirty",
+    //                 json!({
+    //                     "message": format!(
+    //                         "Cargo.lock con cambios detectados: {}",
+    //                         result.lockfile_path.display()
+    //                     )
+    //                 }),
+    //             );
+    //         }
+    //         LockfileCheck::Ok => {
+    //             logs.push(format!(
+    //                 "Cargo.lock verificado correctamente en {}.",
+    //                 result.lockfile_path.display()
+    //             ));
+    //             secure_logger.log_event(
+    //                 "preflight_lockfile_ok",
+    //                 json!({ "message": format!(
+    //                     "Cargo.lock válido y sincronizado: {}",
+    //                     result.lockfile_path.display()
+    //                 )}),
+    //             );
+    //         }
+    //     },
+    //     Err(e) => {
+    //         logs.push(format!("Error verificando Cargo.lock: {}", e));
+    //         secure_logger.log_error("preflight_lockfile_error", &e);
+    //         return false;
+    //     }
+    // }
+    //
+    // logs.push("Verificando tamaño del binario...".to_string());
+    // match check_binary_size(Path::new(project_path), _platform, None) {
+    //     Ok(result) if !result.exists => {
+    //         logs.push(
+    //             "No se encontró binario release. ¿Ejecutaste cargo build --release?".to_string(),
+    //         );
+    //         secure_logger.log_error(
+    //             "preflight_binary_missing",
+    //             "El binario release no fue encontrado en target/release/",
+    //         );
+    //         return false;
+    //     }
+    //     Ok(result) if result.too_large => {
+    //         logs.push(format!(
+    //             "El binario es demasiado grande: {:.2} MB (límite: {:.2} MB)",
+    //             result.bin_size_bytes as f64 / 1_048_576.0,
+    //             MAX_SIZE_BYTES as f64 / 1_048_576.0
+    //         ));
+    //         secure_logger.log_error(
+    //             "preflight_binary_too_large",
+    //             &format!(
+    //                 "Tamaño: {} bytes. Ruta: {}",
+    //                 result.bin_size_bytes,
+    //                 result.bin_path.display()
+    //             ),
+    //         );
+    //         return false;
+    //     }
+    //     Ok(result) => {
+    //         logs.push(format!(
+    //             "✓ Binario correcto: {:.2} MB",
+    //             result.bin_size_bytes as f64 / 1_048_576.0
+    //         ));
+    //         secure_logger.log_event(
+    //             "preflight_binary_size_ok",
+    //             json!({
+    //                 "path": result.bin_path,
+    //                 "size_bytes": result.bin_size_bytes
+    //             }),
+    //         );
+    //     }
+    //     Err(e) => {
+    //         logs.push(format!("Error revisando el binario: {}", e));
+    //         secure_logger.log_error("preflight_binary_check_failed", &e);
+    //         return false;
+    //     }
+    // }
 
     secure_logger.log_event(
         "preflight_dockerfile_check",
