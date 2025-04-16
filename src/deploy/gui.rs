@@ -1,6 +1,8 @@
+use std::path::PathBuf;
 use crate::app::AvisaCtlApp;
 use crate::deploy::logic::{Platform, RemoteConfig};
 use crate::deploy::preflight::run_preflight;
+use crate::deploy::logic::{Platform, RemoteConfig};
 use crate::deploy::remote::deploy_to_remote_async;
 use crate::securelog::logger::SecureLogger;
 use crate::securelog::read_secure_log_formatted;
@@ -220,7 +222,7 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                         username: app.remote_user.clone(),
                         pass: app.remote_pass.clone(),
                         remote_path: app.remote_path.clone(),
-                        secure_log_path: app.config.secure_log_path.clone(),
+                        secure_log_path: app.secure_log_path.clone(),
                     };
 
                     tokio::spawn(async move {
@@ -261,7 +263,7 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                                 secure_logger,
                             );
                         } else {
-                            for line in temp_logs.drain(..) {
+                           for line in temp_logs.drain(..) {
                                 logs_arc.lock().unwrap().push(line);
                             }
                             logs_arc
@@ -320,6 +322,7 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
             ui.label(RichText::new("Secure Log (hash encadenado)").strong());
 
             if ui.button("Validar integridad").clicked() {
+
                 let log_path = {
                     let mut p = PathBuf::from(app.config.secure_log_path.as_ref().unwrap());
                     p.push("secure.log");
