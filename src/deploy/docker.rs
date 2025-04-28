@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::Path;
 use std::process::Stdio;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 use crate::deploy::logic::extract_package_name;
@@ -147,7 +148,7 @@ pub async fn build_with_docker(
         serde_json::json!({ "image_name": image_name }),
     );
 
-    let run_result = Command::new("docker")
+    let mut child = Command::new("docker")
         .arg("run")
         .arg("--rm")
         .arg("-v")
@@ -172,31 +173,106 @@ pub async fn build_with_docker(
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output()
-        .await;
+        .spawn()
+        .expect("Docker build failed");
 
-    match run_result {
-        Ok(output) => {
-            if output.status.success() {
-                logs.push("Build en Docker completado con éxito.".into());
-                secure_logger.log_event(
-                    "docker_run_success",
-                    serde_json::json!({ "image": image_name }),
-                );
-                true
-            } else {
-                logs.push("Build en Docker falló.".into());
-                secure_logger.log_error(
-                    "docker_run_failed",
-                    &String::from_utf8_lossy(&output.stderr),
-                );
-                false
-            }
+    let stdout = child.stdout.take().expect("No se pudo capturar stdout");
+    let stderr = child.stderr.take().expect("No se pudo capturar stderr");
+
+    let mut stdout_reader = BufReader::new(stdout).lines();
+    let mut stderr_reader = BufReader::new(stderr).lines();
+
+    let mut logs_out = Vec::new();
+    let stdout_task = tokio::spawn(async move {
+        while let Ok(Some(line)) = stdout_reader.next_line().await {
+            logs_out.push(format!("STDOUT: {}", line));
         }
-        Err(e) => {
-            logs.push(format!("Error al ejecutar Docker run: {}", e));
-            secure_logger.log_error("docker_run_error", &e.to_string());
-            false
+        logs_out
+    });
+
+    let mut logs_err = Vec::new();
+    let stderr_task = tokio::spawn(async move {
+        while let Ok(Some(line)) = stderr_reader.next_line().await {
+            logs_err.push(format!("STDERR: {}", line));
         }
+        logs_err
+    });
+
+    let status = child.wait().await.expect("Fallo esperando docker run");
+
+    let stdout_lines = stdout_task.await.unwrap_or_default();
+    let stderr_lines = stderr_task.await.unwrap_or_default();
+
+    logs.extend(stdout_lines);
+    logs.extend(stderr_lines);
+
+    if status.success() {
+        logs.push("Build en Docker completado con éxito.".into());
+        secure_logger.log_event(
+            "docker_run_success",
+            serde_json::json!({ "image": image_name }),
+        );
+        true
+    } else {
+        logs.push("Build en Docker falló.".into());
+        secure_logger.log_error(
+            "docker_run_failed",
+            "Error al compilar en contenedor Docker.",
+        );
+        false
     }
+
+
+    // let run_result = Command::new("docker")
+    //     .arg("run")
+    //     .arg("--rm")
+    //     .arg("-v")
+    //     .arg(format!(
+    //         "{}/:/project",
+    //         convert_windows_path_for_docker(&abs_path)
+    //     ))
+    //     .arg("-v")
+    //     .arg(format!(
+    //         "{}/target:/project/target",
+    //         convert_windows_path_for_docker(&abs_path)
+    //     ))
+    //     .arg("-w")
+    //     .arg("/project")
+    //     .arg(&image_name)
+    //     .args([
+    //         "cargo",
+    //         "build",
+    //         "--release",
+    //         "--target",
+    //         "x86_64-unknown-linux-gnu",
+    //     ])
+    //     .stdout(Stdio::piped())
+    //     .stderr(Stdio::piped())
+    //     .output()
+    //     .await;
+    //
+    // match run_result {
+    //     Ok(output) => {
+    //         if output.status.success() {
+    //             logs.push("Build en Docker completado con éxito.".into());
+    //             secure_logger.log_event(
+    //                 "docker_run_success",
+    //                 serde_json::json!({ "image": image_name }),
+    //             );
+    //             true
+    //         } else {
+    //             logs.push("Build en Docker falló.".into());
+    //             secure_logger.log_error(
+    //                 "docker_run_failed",
+    //                 &String::from_utf8_lossy(&output.stderr),
+    //             );
+    //             false
+    //         }
+    //     }
+    //     Err(e) => {
+    //         logs.push(format!("Error al ejecutar Docker run: {}", e));
+    //         secure_logger.log_error("docker_run_error", &e.to_string());
+    //         false
+    //     }
+    // }
 }
