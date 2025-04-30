@@ -79,10 +79,10 @@ impl RemoteUploader {
                         &format!("Pánico en spawn_blocking en intento {}: {}", attempt, join_err),
                     );
                 }
-                Err(_timeout_err) => {
+                Err(timeout_err) => {
                     self.secure_logger.log_error(
                         "deploy_attempt_timeout",
-                        &format!("Timeout de 30s en intento {}", attempt),
+                        &format!("Timeout en intento {}: {:?}", attempt, timeout_err),
                     );
                 }
             }

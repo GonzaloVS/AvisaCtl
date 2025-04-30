@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::config::{load_config, AvisaCtlConfig};
 use crate::deploy::gui::deploy_tab;
+use crate::logview::gui::logviewer_tab;
 
 pub struct AvisaCtlApp {
     pub config: AvisaCtlConfig,
@@ -22,6 +23,14 @@ pub struct AvisaCtlApp {
     pub cancel_deploy: bool,
     pub log_validated: bool,
     pub log_valid: Option<bool>,
+    // Validaciones del panel de configuración
+    pub check_format: bool,
+    pub check_warnings: bool,
+    pub check_tests: bool,
+    pub check_audit: bool,
+    pub check_unwraps: bool,
+    pub check_bin_size: bool,
+    pub max_bin_size: u64,
 }
 
 #[derive(PartialEq)]
@@ -53,6 +62,14 @@ impl Default for AvisaCtlApp {
             cancel_deploy: false,
             log_validated: false,
             log_valid: None,
+            //panel de configuración
+            check_format: config.check_format.clone(),
+            check_warnings: config.check_warnings.clone(),
+            check_tests: config.check_tests.clone(),
+            check_audit: config.check_audit.clone(),
+            check_unwraps: config.check_unwraps.clone(),
+            check_bin_size: config.check_bin_size.clone(),
+            max_bin_size: config.max_bin_size.clone(),
         }
     }
 }
@@ -68,8 +85,11 @@ impl App for AvisaCtlApp {
             });
         });
 
-        if self.current_tab == Tab::Deploy {
-            deploy_tab(self, ctx);
+        match self.current_tab {
+            Tab::Deploy => { deploy_tab(self, ctx); }
+            Tab::Backup => {}
+            Tab::Services => {}
+            Tab::LogViewer => { logviewer_tab(self, ctx)}
         }
     }
 }

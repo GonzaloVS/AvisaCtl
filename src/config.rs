@@ -10,6 +10,13 @@ pub struct AvisaCtlConfig {
     pub last_remote_pass: String,
     pub last_remote_path: String,
     pub secure_log_path: Option<String>,
+    pub check_format: bool,
+    pub check_warnings: bool,
+    pub check_tests: bool,
+    pub check_audit: bool,
+    pub check_unwraps: bool,
+    pub check_bin_size: bool,
+    pub max_bin_size: u64,
 }
 
 // pub fn load_config() -> AvisaCtlConfig {

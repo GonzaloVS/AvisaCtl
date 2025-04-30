@@ -132,35 +132,70 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
 
         ui.add_space(10.0);
 
-        ui.group(|ui| {
-            ui.label(RichText::new("Configuración").strong());
+        ui.horizontal(|ui| {
+            // Cuadro "Destino"
+            ui.vertical(|ui| {
+                ui.group(|ui| {
+                    ui.label(RichText::new("Destino").strong());
 
-            ui.horizontal(|ui| {
-                ui.label("Servidor:");
-                ui.text_edit_singleline(&mut app.server_address);
+                    ui.horizontal(|ui| {
+                        ui.label("Servidor:");
+                        ui.text_edit_singleline(&mut app.server_address);
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Usuario:");
+                        ui.text_edit_singleline(&mut app.remote_user);
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Password:");
+                        use eframe::egui::TextEdit;
+                        ui.add(TextEdit::singleline(&mut app.remote_pass).password(true));
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Ruta remota:");
+                        ui.text_edit_singleline(&mut app.remote_path);
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Plataforma:");
+                        ui.label("Linux");
+                    });
+                });
             });
 
-            ui.horizontal(|ui| {
-                ui.label("Usuario:");
-                ui.text_edit_singleline(&mut app.remote_user);
-            });
+                // Cuadro "Configuración"
+                ui.add_space(10.0);
+                ui.vertical(|ui| {
+                    ui.group(|ui| {
+                        ui.label(RichText::new("Configuración").strong());
 
-            ui.horizontal(|ui| {
-                ui.label("Password:");
-                use eframe::egui::TextEdit;
-                ui.add(TextEdit::singleline(&mut app.remote_pass).password(true));
-            });
+                        ui.label("Validaciones básicas:");
+                        ui.checkbox(&mut app.check_format, "format check");
+                        ui.checkbox(&mut app.check_warnings, "warnings");
+                        ui.checkbox(&mut app.check_tests, "test");
+                        ui.checkbox(&mut app.check_audit, "audit");
 
-            ui.horizontal(|ui| {
-                ui.label("Ruta remota:");
-                ui.text_edit_singleline(&mut app.remote_path);
+                        ui.separator();
+                        ui.label("Validaciones avanzadas:");
+                        ui.checkbox(&mut app.check_unwraps, "unwraps");
+                        ui.horizontal(|ui| {
+                            ui.checkbox(&mut app.check_bin_size, "bin size");
+                            if app.check_bin_size {
+                                ui.label("Máx (bytes):");
+                                ui.add(
+                                    egui::DragValue::new(&mut app.max_bin_size)
+                                    .speed(100)
+                                        .range(0..=100_000_000)
+                                        .clamp_existing_to_range(true)
+                                );
+                            }
+                        });
+                    });
+                });
             });
-
-            ui.horizontal(|ui| {
-                ui.label("Plataforma:");
-                ui.label("Linux");
-            });
-        });
 
         ui.add_space(10.0);
 
@@ -351,7 +386,7 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                 .show(ui, |ui| {
                     let lines = read_secure_log_formatted();
                     if lines.is_empty() {
-                        ui.label("⚠ secure.log vacío o no inicializado.");
+                        ui.label("secure.log vacío o no inicializado.");
                     } else {
                         for line in lines {
                             ui.label(line);
