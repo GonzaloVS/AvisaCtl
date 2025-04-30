@@ -24,7 +24,10 @@ impl RemoteUploader {
         }
     }
 
-    pub async fn upload_binary(&self, local_path: &Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn upload_binary(
+        &self,
+        local_path: &Path,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let local_path_string = local_path.to_string_lossy().to_string();
 
         for attempt in 1..=2 {
@@ -46,12 +49,10 @@ impl RemoteUploader {
                     let remote = self.remote.clone();
                     let secure_logger = self.secure_logger.clone();
                     let local_path_string = local_path_string.clone();
-                    move || {
-                        Self::try_upload_once(&remote, &local_path_string, &secure_logger)
-                    }
+                    move || Self::try_upload_once(&remote, &local_path_string, &secure_logger)
                 }),
             )
-                .await;
+            .await;
 
             match result {
                 Ok(Ok(Ok(()))) => {
@@ -76,7 +77,10 @@ impl RemoteUploader {
                 Ok(Err(join_err)) => {
                     self.secure_logger.log_error(
                         "deploy_attempt_panic",
-                        &format!("Pánico en spawn_blocking en intento {}: {}", attempt, join_err),
+                        &format!(
+                            "Pánico en spawn_blocking en intento {}: {}",
+                            attempt, join_err
+                        ),
                     );
                 }
                 Err(timeout_err) => {
@@ -86,8 +90,6 @@ impl RemoteUploader {
                     );
                 }
             }
-
-
         }
 
         Err("Fallaron ambos intentos de subida".into())
@@ -126,7 +128,8 @@ impl RemoteUploader {
         let file_size = metadata.len();
 
         // Crear archivo remoto
-        let mut remote_file = session.scp_send(Path::new(&remote.remote_path), 0o644, file_size, None)?;
+        let mut remote_file =
+            session.scp_send(Path::new(&remote.remote_path), 0o644, file_size, None)?;
         let mut buffer = Vec::new();
         local_file.read_to_end(&mut buffer)?;
         remote_file.write_all(&buffer)?;

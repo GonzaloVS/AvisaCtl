@@ -36,7 +36,11 @@ impl SecureLogger {
         }
     }
 
-    pub fn log(&self, event: &str, details: serde_json::Value) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn log(
+        &self,
+        event: &str,
+        details: serde_json::Value,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let now = chrono::Utc::now().to_rfc3339();
         let prev_hash = self.last_hash.lock().unwrap().clone();
 
@@ -75,23 +79,27 @@ impl SecureLogger {
     }
 
     pub fn log_event(&self, tag: &str, payload: serde_json::Value) {
-        self.log(
+        if let Err(e) = self.log(
             tag,
             json!({
-                "level": "info",
-                "payload": payload
-            }),
-        );
+            "level": "info",
+            "payload": payload
+        }),
+        ) {
+            eprintln!("Fallo en log_event: {e}");
+        }
     }
 
     pub fn log_error(&self, tag: &str, description: &str) {
-        self.log(
+        if let Err(e) = self.log(
             tag,
             json!({
-                "level": "error",
-                "message": description
-            }),
-        );
+            "level": "error",
+            "message": description
+        }),
+        ) {
+            eprintln!("Fallo en log_error: {e}");
+        }
     }
 }
 

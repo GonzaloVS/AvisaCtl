@@ -56,11 +56,14 @@ pub fn ensure_secure_log_initialized_at(folder: &str) -> Result<(), String> {
     path.push("secure.log");
 
     if !path.exists() {
-        SecureLogger::new_with_path(&path).log("secure.log inicializado", serde_json::json!({}));
+        SecureLogger::new_with_path(&path)
+            .log("secure.log inicializado", json!({}))
+            .map_err(|e| format!("Fallo al inicializar secure.log: {e}"))?;
     }
 
     Ok(())
 }
+
 
 /// Valida la integridad de un secure.log desde una carpeta específica
 pub fn validate_secure_log_integrity_at(folder: &str) -> Result<(), String> {

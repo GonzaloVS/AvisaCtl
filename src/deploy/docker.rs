@@ -222,7 +222,6 @@ pub async fn build_with_docker(
         false
     }
 
-
     // let run_result = Command::new("docker")
     //     .arg("run")
     //     .arg("--rm")

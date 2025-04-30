@@ -1,7 +1,7 @@
-use std::time::Duration;
 use crate::securelog::read_secure_log_formatted;
 use crate::AvisaCtlApp;
 use eframe::egui::{self, RichText};
+use std::time::Duration;
 
 pub fn logviewer_tab(app: &mut AvisaCtlApp, ctx: &egui::Context) {
     ctx.request_repaint_after(Duration::from_secs(1));
@@ -16,13 +16,14 @@ pub fn logviewer_tab(app: &mut AvisaCtlApp, ctx: &egui::Context) {
                 .auto_shrink([false; 2])
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
-                    let action_logs = app.logs.lock().unwrap();
+                    let action_logs = app.logs.get().lock().unwrap();
                     let secure_logs = read_secure_log_formatted();
 
                     let mut combined: Vec<(String, String)> = Vec::new();
 
                     for l in action_logs.iter() {
-                        combined.push(("[LOG]".to_string(), l.clone()));
+                        let (ts, msg) = l.clone();
+                        combined.push((ts, format!("[LOG] {}", msg)));
                     }
 
                     for l in secure_logs {

@@ -19,10 +19,6 @@ pub struct AvisaCtlConfig {
     pub max_bin_size: u64,
 }
 
-// pub fn load_config() -> AvisaCtlConfig {
-//     confy::load("avisactl", None).unwrap_or_default()
-// }
-
 const CONFIG_FILE: &str = "config.json";
 
 pub fn load_config() -> AvisaCtlConfig {

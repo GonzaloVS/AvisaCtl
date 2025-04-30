@@ -3,6 +3,13 @@
   "last_server_address": "209.74.80.149",
   "last_remote_user": "gonzalo",
   "last_remote_pass": "1234qwe",
-  "last_remote_path": "/var/www/avisamail/canary/avisamail-filter-rust",
-  "secure_log_path": "C:\\Users\\gonzo\\RustroverProjects\\AvisaCtl"
+  "last_remote_path": "/avisamail/canary/avisamail-filter-rust",
+  "secure_log_path": "C:\\Users\\gonzo\\RustroverProjects\\AvisaCtl",
+  "check_format": false,
+  "check_warnings": false,
+  "check_tests": false,
+  "check_audit": false,
+  "check_unwraps": false,
+  "check_bin_size": false,
+  "max_bin_size": 0
 }
