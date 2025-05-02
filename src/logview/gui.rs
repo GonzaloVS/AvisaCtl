@@ -16,14 +16,18 @@ pub fn logviewer_tab(app: &mut AvisaCtlApp, ctx: &egui::Context) {
                 .auto_shrink([false; 2])
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
-                    let action_logs = app.logs.get().lock().unwrap();
+                    let logs_arc = app.logs.get();
+                    let action_logs = logs_arc.lock().unwrap();
                     let secure_logs = read_secure_log_formatted();
 
                     let mut combined: Vec<(String, String)> = Vec::new();
 
                     for l in action_logs.iter() {
                         let (ts, msg) = l.clone();
-                        combined.push((ts, format!("[LOG] {}", msg)));
+                        combined.push((
+                            ts.format("%Y-%m-%d %H:%M:%S").to_string(),
+                            format!("[LOG] {}", msg),
+                        ));
                     }
 
                     for l in secure_logs {

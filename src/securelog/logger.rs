@@ -82,9 +82,9 @@ impl SecureLogger {
         if let Err(e) = self.log(
             tag,
             json!({
-            "level": "info",
-            "payload": payload
-        }),
+                "level": "info",
+                "payload": payload
+            }),
         ) {
             eprintln!("Fallo en log_event: {e}");
         }
@@ -94,9 +94,9 @@ impl SecureLogger {
         if let Err(e) = self.log(
             tag,
             json!({
-            "level": "error",
-            "message": description
-        }),
+                "level": "error",
+                "message": description
+            }),
         ) {
             eprintln!("Fallo en log_error: {e}");
         }

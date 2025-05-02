@@ -1,15 +1,15 @@
 use crate::app::AvisaCtlApp;
 use crate::config::save_config;
-use crate::deploy::logic::{RemoteConfig};
+use crate::deploy::logic::RemoteConfig;
 use crate::deploy::preflight::{run_preflight, PreflightOptions};
 use crate::deploy::remote::deploy_to_remote_async;
 use crate::securelog::logger::SecureLogger;
 use crate::securelog::read_secure_log_formatted;
+use chrono::Utc;
 use eframe::egui::{self, Context, Margin, RichText};
 use native_dialog::FileDialog;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use chrono::Utc;
 
 pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
     egui::CentralPanel::default().show(ctx, |ui| {
@@ -36,14 +36,16 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
 
                     if save_config(&new_config).is_ok() {
                         app.config = new_config;
-                        app.logs.log(format!("Ruta de secure.log guardada: {}", path_str));
+                        app.logs
+                            .log(format!("Ruta de secure.log guardada: {}", path_str));
                     } else {
                         app.logs.log("Error guardando configuración.");
                         app.log_valid = Some(false);
                         return;
                     }
                 } else {
-                    app.logs.log("No se seleccionó una carpeta para el secure.log.");
+                    app.logs
+                        .log("No se seleccionó una carpeta para el secure.log.");
                     app.log_valid = Some(false);
                     return;
                 }
@@ -53,7 +55,8 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                 app.config.secure_log_path.as_ref().unwrap(),
             );
             if let Err(e) = result {
-                app.logs.log("Error al inicializar secure.log: {e}");
+                app.logs
+                    .log(format!("Error al inicializar secure.log: {e}"));
                 app.log_valid = Some(false);
                 return;
             }
@@ -66,7 +69,7 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                     app.log_valid = Some(true);
                 }
                 Err(e) => {
-                    app.logs.log("secure.log corrupto: {e}");
+                    app.logs.log(format!("secure.log corrupto: {e}"));
                     app.log_valid = Some(false);
                 }
             }
@@ -165,9 +168,8 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                         }
                     }
                     if changed {
-                            let _ = save_config(&app.config);
+                        let _ = save_config(&app.config);
                     }
-
 
                     ui.separator();
                     ui.label("Validaciones avanzadas:");
@@ -256,7 +258,7 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                             .await
                             {
                                 for line in temp_logs.drain(..) {
-                                    logs_arc.get().lock().unwrap().push((Utc::now(),line));
+                                    logs_arc.get().lock().unwrap().push((Utc::now(), line));
                                 }
 
                                 deploy_to_remote_async(
@@ -267,24 +269,32 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                                     move |success| {
                                         let mut logs = callback_logs.lock().unwrap();
                                         if success {
-                                            logs.push((Utc::now(),"Deploy remoto completado con éxito.".into()));
+                                            logs.push((
+                                                Utc::now(),
+                                                "Deploy remoto completado con éxito.".into(),
+                                            ));
                                         } else {
-                                            logs.push((Utc::now(),"Error durante el deploy remoto.".into()));
+                                            logs.push((
+                                                Utc::now(),
+                                                "Error durante el deploy remoto.".into(),
+                                            ));
                                         }
-                                        logs.push((Utc::now(),"Estado: deploy finalizado.".into()));
+                                        logs.push((
+                                            Utc::now(),
+                                            "Estado: deploy finalizado.".into(),
+                                        ));
                                     },
                                     cancel_flag_clone,
                                     secure_logger,
                                 );
                             } else {
                                 for line in temp_logs.drain(..) {
-                                    logs_arc.get().lock().unwrap().push((Utc::now(),line));
+                                    logs_arc.get().lock().unwrap().push((Utc::now(), line));
                                 }
-                                logs_arc
-                                    .get()
-                                    .lock()
-                                    .unwrap()
-                                    .push((Utc::now(),"Se detuvo el deploy por error previo.".into()));
+                                logs_arc.get().lock().unwrap().push((
+                                    Utc::now(),
+                                    "Se detuvo el deploy por error previo.".into(),
+                                ));
                             }
                         }
                     });
@@ -307,7 +317,7 @@ pub fn deploy_tab(app: &mut AvisaCtlApp, ctx: &Context) {
                 .auto_shrink([false; 2])
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
-                    for (timestamp, line) in &*app.get().lock().unwrap() {
+                    for (timestamp, line) in &*app.logs.get().lock().unwrap() {
                         let label = format!("[{}] {}", timestamp.format("%Y-%m-%d %H:%M:%S"), line);
                         ui.label(label);
                     }

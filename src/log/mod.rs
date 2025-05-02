@@ -21,23 +21,27 @@ impl AppLogger {
         Arc::clone(&self.inner)
     }
 
-    pub fn filter_by_text(&self, keyword: &str) -> Vec<(DateTime<Utc>, String)> {
-        self.inner.lock().unwrap()
-            .iter()
-            .filter(|(_, line)| line.contains(keyword))
-            .cloned()
-            .collect()
-    }
-
-    pub fn filter_by_date_range(
-        &self,
-        start: DateTime<Utc>,
-        end: DateTime<Utc>,
-    ) -> Vec<(DateTime<Utc>, String)> {
-        self.inner.lock().unwrap()
-            .iter()
-            .filter(|(ts, _)| *ts >= start && *ts <= end)
-            .cloned()
-            .collect()
-    }
+    // pub fn filter_by_text(&self, keyword: &str) -> Vec<(DateTime<Utc>, String)> {
+    //     self.inner
+    //         .lock()
+    //         .unwrap()
+    //         .iter()
+    //         .filter(|(_, line)| line.contains(keyword))
+    //         .cloned()
+    //         .collect()
+    // }
+    //
+    // pub fn filter_by_date_range(
+    //     &self,
+    //     start: DateTime<Utc>,
+    //     end: DateTime<Utc>,
+    // ) -> Vec<(DateTime<Utc>, String)> {
+    //     self.inner
+    //         .lock()
+    //         .unwrap()
+    //         .iter()
+    //         .filter(|(ts, _)| *ts >= start && *ts <= end)
+    //         .cloned()
+    //         .collect()
+    // }
 }

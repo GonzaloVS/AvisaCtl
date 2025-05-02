@@ -64,7 +64,6 @@ pub fn ensure_secure_log_initialized_at(folder: &str) -> Result<(), String> {
     Ok(())
 }
 
-
 /// Valida la integridad de un secure.log desde una carpeta específica
 pub fn validate_secure_log_integrity_at(folder: &str) -> Result<(), String> {
     let mut path = PathBuf::from(folder);

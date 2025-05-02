@@ -3,10 +3,10 @@ mod backup;
 mod checks;
 mod config;
 mod deploy;
+mod log;
 mod logview;
 mod securelog;
 mod services;
-mod log;
 
 use crate::app::AvisaCtlApp;
 use eframe::egui::ViewportBuilder;
