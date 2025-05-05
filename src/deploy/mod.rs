@@ -4,3 +4,4 @@ pub mod logic;
 pub mod preflight;
 pub mod remote;
 mod remote_uploader;
+mod preflight;

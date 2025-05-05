@@ -117,31 +117,45 @@ impl RemoteUploader {
 
         // Autenticación
         session.userauth_password(&remote.username, &remote.pass)?;
-
         if !session.authenticated() {
             return Err("Falló la autenticación SSH".into());
         }
 
+        // Inicializar SFTP
+        let sftp = session.sftp()?;
+
+        // Preparar ruta remota (con nombre del binario)
+        let filename = Path::new(local_path)
+            .file_name()
+            .ok_or("No se pudo obtener nombre del archivo")?
+            .to_string_lossy();
+        let remote_file_path = format!("{}/{}", remote.remote_path, filename);
+
         // Leer archivo local
         let mut local_file = std::fs::File::open(local_path)?;
-        let metadata = local_file.metadata()?;
-        let file_size = metadata.len();
-
-        // Crear archivo remoto
-        let mut remote_file =
-            session.scp_send(Path::new(&remote.remote_path), 0o644, file_size, None)?;
         let mut buffer = Vec::new();
         local_file.read_to_end(&mut buffer)?;
+
+        // Crear archivo remoto vía SFTP
+        use ssh2::OpenFlags;
+        let mut remote_file = sftp.open_mode(
+            Path::new(&remote_file_path),
+            OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::TRUNCATE,
+            0o644,
+            ssh2::OpenType::File,
+        )?;
+
         remote_file.write_all(&buffer)?;
 
         secure_logger.log_event(
             "upload_success",
             json!({
-                "path": remote.remote_path,
-                "message": "Archivo subido correctamente"
-            }),
+            "path": remote_file_path,
+            "message": "Archivo subido correctamente via SFTP"
+        }),
         );
 
         Ok(())
     }
+
 }
