@@ -1,7 +1,9 @@
 use crate::app::AvisaCtlApp;
 use crate::config::save_config;
 use crate::deploy::logic::RemoteConfig;
-use crate::deploy::preflight::{run_preflight, PreflightOptions};
+use crate::deploy::preflight::run::run_preflight;
+use crate::deploy::preflight::options::PreflightOptions;
+
 use crate::deploy::remote::deploy_to_remote_async;
 use crate::securelog::logger::SecureLogger;
 use crate::securelog::read_secure_log_formatted;

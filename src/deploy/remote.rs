@@ -3,7 +3,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::config::{save_config, AvisaCtlConfig};
 use crate::deploy::logic::{Platform, RemoteConfig};
-use crate::deploy::preflight::rename_previous_binary;
+use crate::deploy::preflight::binary_rename::rename_previous_binary;
+
 use crate::deploy::remote_uploader::RemoteUploader;
 use crate::securelog::logger::SecureLogger;
 use serde_json::json;
