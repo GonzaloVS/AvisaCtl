@@ -257,7 +257,7 @@ pub fn ensure_base_image(logs: &mut Vec<String>, secure_logger: &SecureLogger) -
             );
 
             let dockerfile_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("assets")
+                .join("../assets")
                 .join("Dockerfile.base");
 
             let context_path = Path::new(env!("CARGO_MANIFEST_DIR")); // raíz del proyecto
