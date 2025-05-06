@@ -1,7 +1,7 @@
 use crate::deploy::logic::{extract_package_name, Platform};
 use crate::securelog::logger::SecureLogger;
 use serde_json::json;
-use std::path::{Path, PathBuf};
+use std::path::{Path};
 
 pub fn rename_previous_binary(
     project_path: &str,

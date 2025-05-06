@@ -1,11 +1,13 @@
-FROM rust:latest
-
-RUN apt update && apt install -y \
-    build-essential \
-    pkg-config \
-    libssl-dev \
-    libclang-dev \
-    curl \
-    && cargo install cargo-audit
+ARG BASE_IMAGE=avisactl-base
+FROM ${BASE_IMAGE}
 
 WORKDIR /project
+
+# Opcional: mejora la cache con crates
+COPY Cargo.toml Cargo.lock ./
+RUN cargo fetch
+
+# Luego sí copia el resto del código
+COPY . .
+
+# No compiles aquí. Solo deja todo listo.

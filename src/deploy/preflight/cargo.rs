@@ -1,7 +1,6 @@
 use crate::securelog::logger::SecureLogger;
 use serde_json::json;
 use std::process::Stdio;
-use std::path::Path;
 use tokio::process::Command;
 
 pub async fn run_cargo_steps(

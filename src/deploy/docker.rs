@@ -3,6 +3,7 @@ use std::path::Path;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+use std::process::Command as StdCommand;
 
 use crate::deploy::logic::extract_package_name;
 use crate::securelog::logger::SecureLogger;
@@ -94,7 +95,14 @@ pub async fn build_with_docker(
         }
     };
 
+    if !ensure_base_image(logs, secure_logger) {
+        logs.push("No se pudo asegurar la imagen base. Abortando.".into());
+        return false;
+    }
+
+
     let dockerfile_name = format!("Dockerfile.{}", pkg_name);
+    let base_image = "avisactl-base";
     let image_name = format!("{}-build", pkg_name.to_lowercase());
 
     logs.push(format!("Construyendo imagen Docker '{}'", image_name));
@@ -110,6 +118,8 @@ pub async fn build_with_docker(
         .arg("build")
         .arg("-f")
         .arg(&dockerfile_name)
+        .arg("--build-arg")
+        .arg(format!("BASE_IMAGE={}", base_image))
         .arg("-t")
         .arg(&image_name)
         .arg(&abs_path)
@@ -221,57 +231,68 @@ pub async fn build_with_docker(
         );
         false
     }
+}
 
-    // let run_result = Command::new("docker")
-    //     .arg("run")
-    //     .arg("--rm")
-    //     .arg("-v")
-    //     .arg(format!(
-    //         "{}/:/project",
-    //         convert_windows_path_for_docker(&abs_path)
-    //     ))
-    //     .arg("-v")
-    //     .arg(format!(
-    //         "{}/target:/project/target",
-    //         convert_windows_path_for_docker(&abs_path)
-    //     ))
-    //     .arg("-w")
-    //     .arg("/project")
-    //     .arg(&image_name)
-    //     .args([
-    //         "cargo",
-    //         "build",
-    //         "--release",
-    //         "--target",
-    //         "x86_64-unknown-linux-gnu",
-    //     ])
-    //     .stdout(Stdio::piped())
-    //     .stderr(Stdio::piped())
-    //     .output()
-    //     .await;
-    //
-    // match run_result {
-    //     Ok(output) => {
-    //         if output.status.success() {
-    //             logs.push("Build en Docker completado con éxito.".into());
-    //             secure_logger.log_event(
-    //                 "docker_run_success",
-    //                 serde_json::json!({ "image": image_name }),
-    //             );
-    //             true
-    //         } else {
-    //             logs.push("Build en Docker falló.".into());
-    //             secure_logger.log_error(
-    //                 "docker_run_failed",
-    //                 &String::from_utf8_lossy(&output.stderr),
-    //             );
-    //             false
-    //         }
-    //     }
-    //     Err(e) => {
-    //         logs.push(format!("Error al ejecutar Docker run: {}", e));
-    //         secure_logger.log_error("docker_run_error", &e.to_string());
-    //         false
-    //     }
-    // }
+pub fn ensure_base_image(logs: &mut Vec<String>, secure_logger: &SecureLogger) -> bool {
+    let check = StdCommand::new("docker")
+        .arg("images")
+        .arg("-q")
+        .arg("avisactl-base")
+        .output();
+
+    match check {
+        Ok(output) if !output.stdout.is_empty() => {
+            logs.push("La imagen base 'avisactl-base' ya existe.".into());
+            secure_logger.log_event(
+                "docker_base_image_exists",
+                serde_json::json!({ "image": "avisactl-base" }),
+            );
+            true
+        }
+        _ => {
+            logs.push("La imagen base 'avisactl-base' no existe. Construyendo...".into());
+            secure_logger.log_event(
+                "docker_base_image_missing",
+                serde_json::json!({ "image": "avisactl-base" }),
+            );
+
+            let dockerfile_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("assets")
+                .join("Dockerfile.base");
+
+            let context_path = Path::new(env!("CARGO_MANIFEST_DIR")); // raíz del proyecto
+
+            let build = StdCommand::new("docker")
+                .arg("build")
+                .arg("-f")
+                .arg(dockerfile_path.to_string_lossy().as_ref())
+                .arg("-t")
+                .arg("avisactl-base")
+                .arg(".")
+                .current_dir(context_path)
+                .output();
+
+            match build {
+                Ok(out) if out.status.success() => {
+                    logs.push("Imagen base 'avisactl-base' construida con éxito.".into());
+                    secure_logger.log_event(
+                        "docker_base_image_built",
+                        serde_json::json!({ "status": "success" }),
+                    );
+                    true
+                }
+                Ok(out) => {
+                    let stderr = String::from_utf8_lossy(&out.stderr);
+                    logs.push(format!("Error al construir la imagen base: {}", stderr));
+                    secure_logger.log_error("docker_base_image_build_failed", &stderr);
+                    false
+                }
+                Err(e) => {
+                    logs.push(format!("Error al ejecutar docker build: {}", e));
+                    secure_logger.log_error("docker_base_image_error", &e.to_string());
+                    false
+                }
+            }
+        }
+    }
 }

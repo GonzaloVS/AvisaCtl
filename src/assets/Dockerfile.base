@@ -1,0 +1,12 @@
+# Dockerfile.base — se construye una vez
+FROM rust:latest
+
+RUN apt update && apt install -y \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    libclang-dev \
+    curl && \
+    cargo install cargo-audit
+
+# Esta imagen no compila nada del proyecto todavía.

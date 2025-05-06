@@ -1,5 +1,6 @@
+use std::sync::{Arc, Mutex};
 use crate::config::{load_config, AvisaCtlConfig};
-use crate::deploy::gui::deploy_tab;
+use crate::deploy::gui::deploy_tab::deploy_tab;
 use crate::log::AppLogger;
 use crate::logview::gui::logviewer_tab;
 use eframe::{
@@ -19,7 +20,7 @@ pub struct AvisaCtlApp {
     pub remote_pass: String,
     pub remote_path: String,
 
-    pub is_deploying: bool,
+    pub is_deploying_flag: Arc<Mutex<bool>>,
     pub cancel_deploy: bool,
     pub log_validated: bool,
     pub log_valid: Option<bool>,
@@ -50,7 +51,7 @@ impl Default for AvisaCtlApp {
             logs: AppLogger::new(),
             config,
             current_tab: Tab::Deploy,
-            is_deploying: false,
+            is_deploying_flag: Arc::new(Mutex::new(false)),
             cancel_deploy: false,
             log_validated: false,
             log_valid: None,
