@@ -8,7 +8,7 @@ use std::process::Command as StdCommand;
 use crate::deploy::logic::extract_package_name;
 use crate::securelog::logger::SecureLogger;
 
-const DOCKERFILE_TEMPLATE: &str = include_str!("../assets/Dockerfile.template");
+const DOCKERFILE_TEMPLATE: &str = include_str!("../../assets/Dockerfile.template");
 
 pub fn ensure_dockerfile_exists(
     project_path: &str,

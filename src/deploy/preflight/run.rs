@@ -1,6 +1,9 @@
 use crate::deploy::logic::Platform;
 use crate::securelog::logger::SecureLogger;
-use crate::deploy::docker::{build_with_docker, ensure_dockerfile_exists};
+use crate::deploy::docker::{
+    ensure::ensure_dockerfile_exists,
+    build::build_with_docker,
+};
 use crate::deploy::preflight::{
     cargo::run_cargo_steps,
     checks::{run_unwrap_check, run_lockfile_check, run_bin_size_check},
