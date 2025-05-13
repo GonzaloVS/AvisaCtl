@@ -151,7 +151,7 @@ impl RemoteUploader {
         remote: &RemoteConfig,
         local_path: &str,
         local_timestamp_path: &str,
-        timestamp_filename: &str,
+        _timestamp_filename: &str,
         secure_logger: &SecureLogger,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Establecer conexión TCP con timeout

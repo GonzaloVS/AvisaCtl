@@ -17,7 +17,7 @@ pub struct BinSizeCheckResult {
 pub fn get_binary_path(project_path: &Path, platform: &Platform) -> Option<PathBuf> {
     let pkg_name = extract_package_name(&project_path.join("Cargo.toml"))?;
     let bin_name = match platform {
-        Platform::Windows => format!("{}.exe", pkg_name),
+        //Platform::Windows => format!("{}.exe", pkg_name),
         Platform::Linux => pkg_name,
     };
 

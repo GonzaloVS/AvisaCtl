@@ -4,7 +4,7 @@ use std::path::Path;
 #[derive(Debug, PartialEq, Clone)]
 pub enum Platform {
     Linux,
-    Windows,
+    //Windows,
 }
 
 #[derive(Debug, Clone)]

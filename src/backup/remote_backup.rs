@@ -71,7 +71,7 @@ pub fn create_remote_backup(
                 serde_json::json!({ "dir": backup_dir_str }),
             );
         }
-        Err(e) => {
+        Err(_e) => {
             // No existe, intentar crearla
             println!("La carpeta no existe, se intenta crear.");
             match sftp.mkdir(Path::new(&backup_dir_str), 0o755) {
@@ -127,49 +127,49 @@ pub fn create_remote_backup(
 
     Ok(())
 }
-
-fn run_command(
-    ssh: &Session,
-    command: &str,
-    secure_logger: &SecureLogger,
-    label: &str,
-) -> Result<String, Box<dyn Error + Send + Sync>> {
-    let mut channel = ssh.channel_session()?;
-
-    if let Err(e) = channel.exec(command) {
-        secure_logger.log_error(&format!("{}_exec_error", label), &format!("Falló exec: {} -> {}", label, e));
-        return Err(e.into());
-    }
-
-    // Leer stdout y stderr
-    let mut stdout = String::new();
-    channel.read_to_string(&mut stdout).ok();
-
-    let mut stderr = String::new();
-    channel.stderr().read_to_string(&mut stderr).ok();
-
-    // Esperar correctamente cierre del canal
-    channel.send_eof()?;
-    channel.wait_eof()?;
-    channel.wait_close()?;
-    let exit_code = channel.exit_status()?;
-
-    if exit_code != 0 {
-        secure_logger.log_error(
-            &format!("{}_exit_nonzero", label),
-            &format!(
-                "{} → código {}\nstdout: {}\nstderr: {}",
-                command, exit_code, stdout.trim(), stderr.trim()
-            ),
-        );
-        return Err(format!("El comando '{}' falló con código {}", command, exit_code).into());
-    }
-
-    secure_logger.log_event(
-        &format!("{}_ok", label),
-        serde_json::json!({ "cmd": command, "stdout": stdout.trim() }),
-    );
-
-    Ok(stdout)
-}
+//
+// fn run_command(
+//     ssh: &Session,
+//     command: &str,
+//     secure_logger: &SecureLogger,
+//     label: &str,
+// ) -> Result<String, Box<dyn Error + Send + Sync>> {
+//     let mut channel = ssh.channel_session()?;
+//
+//     if let Err(e) = channel.exec(command) {
+//         secure_logger.log_error(&format!("{}_exec_error", label), &format!("Falló exec: {} -> {}", label, e));
+//         return Err(e.into());
+//     }
+//
+//     // Leer stdout y stderr
+//     let mut stdout = String::new();
+//     channel.read_to_string(&mut stdout).ok();
+//
+//     let mut stderr = String::new();
+//     channel.stderr().read_to_string(&mut stderr).ok();
+//
+//     // Esperar correctamente cierre del canal
+//     channel.send_eof()?;
+//     channel.wait_eof()?;
+//     channel.wait_close()?;
+//     let exit_code = channel.exit_status()?;
+//
+//     if exit_code != 0 {
+//         secure_logger.log_error(
+//             &format!("{}_exit_nonzero", label),
+//             &format!(
+//                 "{} → código {}\nstdout: {}\nstderr: {}",
+//                 command, exit_code, stdout.trim(), stderr.trim()
+//             ),
+//         );
+//         return Err(format!("El comando '{}' falló con código {}", command, exit_code).into());
+//     }
+//
+//     secure_logger.log_event(
+//         &format!("{}_ok", label),
+//         serde_json::json!({ "cmd": command, "stdout": stdout.trim() }),
+//     );
+//
+//     Ok(stdout)
+// }
 

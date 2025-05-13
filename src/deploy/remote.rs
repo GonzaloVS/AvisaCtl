@@ -2,8 +2,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use crate::config::{save_config, AvisaCtlConfig};
-use crate::deploy::logic::{Platform, RemoteConfig};
-use crate::deploy::preflight::binary_rename::rename_previous_binary;
+use crate::deploy::logic::{extract_package_name, Platform, RemoteConfig};
+
 
 use crate::deploy::remote_uploader::RemoteUploader;
 use crate::securelog::logger::SecureLogger;
@@ -37,10 +37,13 @@ pub fn deploy_to_remote_async(
         config.secure_log_path = remote.secure_log_path.clone();
         let _ = save_config(&config);
 
-        let binary_name = match rename_previous_binary(&project_path, &platform, &secure_logger) {
-            Some(name) => name,
+        let binary_name = match extract_package_name(&Path::new(&project_path).join("Cargo.toml")) {
+            Some(name) => match platform {
+                //Platform::Windows => format!("{name}.exe"),
+                Platform::Linux => name,
+            },
             None => {
-                secure_logger.log_error("deploy_fail_binary_name", "rename_previous_binary failed");
+                secure_logger.log_error("deploy_fail_binary_name", "No se pudo leer el nombre del paquete desde Cargo.toml");
                 callback(false);
                 return;
             }
