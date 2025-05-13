@@ -51,16 +51,48 @@ pub fn create_remote_backup(
     let parent_dir = Path::new(bin_path)
         .parent()
         .ok_or("No se pudo obtener directorio padre del binario")?;
-    let backup_dir = parent_dir.join(timestamp);
+    let backup_dir = parent_dir.join(format!("backup_{}", timestamp));
     let backup_dir_str = backup_dir.to_string_lossy().replace('\\', "/");
 
+    // 🔍 DEBUG: Mostrar por terminal la ruta que se intenta crear
+    println!("Intentando crear carpeta de backup en: {}", backup_dir_str);
     secure_logger.log_event(
-        "remote_backup_dir_create",
+        "mkdir_attempt",
         serde_json::json!({ "dir": backup_dir_str }),
     );
 
-    // Crear la carpeta si no existe
-    let _ = sftp.mkdir(Path::new(&backup_dir_str), 0o755);
+    // Verificar si la carpeta ya existe antes de intentar crearla
+    match sftp.stat(Path::new(&backup_dir_str)) {
+        Ok(_) => {
+            // Ya existe
+            println!("La carpeta ya existe, no se crea.");
+            secure_logger.log_event(
+                "mkdir_skipped_exists",
+                serde_json::json!({ "dir": backup_dir_str }),
+            );
+        }
+        Err(e) => {
+            // No existe, intentar crearla
+            println!("La carpeta no existe, se intenta crear.");
+            match sftp.mkdir(Path::new(&backup_dir_str), 0o755) {
+                Ok(_) => {
+                    println!("Carpeta creada con éxito.");
+                    secure_logger.log_event(
+                        "mkdir_ok",
+                        serde_json::json!({ "dir": backup_dir_str }),
+                    );
+                }
+                Err(e) => {
+                    println!("Error al crear carpeta: {}", e);
+                    secure_logger.log_error(
+                        "mkdir_failed",
+                        &format!("No se pudo crear el directorio {} → {}", backup_dir_str, e),
+                    );
+                    return Err(e.into());
+                }
+            }
+        }
+    }
 
     // Mover el binario
     let bin_filename = Path::new(bin_path)
