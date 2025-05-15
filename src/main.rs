@@ -7,6 +7,7 @@ mod log;
 mod logview;
 mod securelog;
 mod services;
+mod utils;
 
 use crate::app::AvisaCtlApp;
 use eframe::egui::ViewportBuilder;

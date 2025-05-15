@@ -1,7 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::deploy::logic::{extract_package_name, Platform};
+use crate::deploy::logic::Platform;
+use crate::deploy::remote::bin_path::extract_package_name;
 
 /// Tamaño máximo permitido del binario en bytes (por defecto 15 MB)
 pub const MAX_SIZE_BYTES: u64 = 15 * 1024 * 1024;

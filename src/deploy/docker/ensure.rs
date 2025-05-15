@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command as StdCommand;
 
-use crate::deploy::logic::extract_package_name;
+use crate::deploy::remote:: bin_path::extract_package_name;
 use crate::securelog::logger::SecureLogger;
 
 const DOCKERFILE_TEMPLATE: &str = include_str!("../../../assets/Dockerfile.template");

@@ -1,5 +1,5 @@
 use crate::securelog::logger::SecureLogger;
-use crate::deploy::logic::RemoteConfig;
+use crate::deploy::remote::config::RemoteConfig;
 use serde_json::json;
 use ssh2::Session;
 use std::net::{TcpStream, ToSocketAddrs};

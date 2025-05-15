@@ -4,7 +4,7 @@ use tokio::process::Command;
 
 use crate::deploy::docker::ensure::{ensure_base_image};
 use crate::deploy::docker::utils::convert_windows_path_for_docker;
-use crate::deploy::logic::extract_package_name;
+use crate::deploy::remote::bin_path::extract_package_name;
 use crate::securelog::logger::SecureLogger;
 
 pub async fn build_with_docker(

@@ -8,8 +8,9 @@ use std::time::Duration;
 use tokio::task::spawn_blocking;
 use tokio::time::timeout;
 
-use crate::deploy::logic::RemoteConfig;
+use crate::deploy::remote::config::RemoteConfig;
 use crate::securelog::logger::SecureLogger;
+use crate::utils::zip_utils::{zip_files, unzip_remote, cleanup_local_file};
 
 pub struct RemoteUploader {
     remote: RemoteConfig,
@@ -30,20 +31,17 @@ impl RemoteUploader {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let local_path_string = local_path.to_string_lossy().to_string();
 
-        let (local_timestamp_path, timestamp_value) =
-            generate_local_timestamp_file(&local_path_string, &self.secure_logger)?;
-
         for attempt in 1..=2 {
             self.secure_logger.log_event(
                 "deploy_attempt",
                 json!({
-                    "attempt": attempt,
-                    "destination": format!(
-                        "{}@{}:{}",
-                        self.remote.username, self.remote.server_address, self.remote.remote_path
-                    ),
-                    "source": &local_path_string
-                }),
+                "attempt": attempt,
+                "destination": format!(
+                    "{}@{}:{}",
+                    self.remote.username, self.remote.server_address, self.remote.remote_path
+                ),
+                "source": &local_path_string
+            }),
             );
 
             let result = timeout(
@@ -52,14 +50,10 @@ impl RemoteUploader {
                     let remote = self.remote.clone();
                     let secure_logger = self.secure_logger.clone();
                     let local_path_string = local_path_string.clone();
-                    let local_timestamp_path = local_timestamp_path.clone();
-                    let timestamp_value = timestamp_value.clone();
                     move || {
                         Self::try_upload_once(
                             &remote,
                             &local_path_string,
-                            &local_timestamp_path,
-                            &timestamp_value,
                             &secure_logger,
                         )
                     }
@@ -72,12 +66,12 @@ impl RemoteUploader {
                     self.secure_logger.log_event(
                         "deploy_success",
                         json!({
-                "attempt": attempt,
-                "destination": format!(
-                    "{}@{}:{}",
-                    self.remote.username, self.remote.server_address, self.remote.remote_path
-                )
-            }),
+                        "attempt": attempt,
+                        "destination": format!(
+                            "{}@{}:{}",
+                            self.remote.username, self.remote.server_address, self.remote.remote_path
+                        )
+                    }),
                     );
                     return Ok(());
                 }
@@ -90,10 +84,7 @@ impl RemoteUploader {
                 Ok(Err(join_err)) => {
                     self.secure_logger.log_error(
                         "deploy_attempt_panic",
-                        &format!(
-                            "Pánico en spawn_blocking en intento {}: {}",
-                            attempt, join_err
-                        ),
+                        &format!("Pánico en spawn_blocking en intento {}: {}", attempt, join_err),
                     );
                 }
                 Err(timeout_err) => {
@@ -108,6 +99,8 @@ impl RemoteUploader {
         Err("Fallaron ambos intentos de subida".into())
     }
 
+
+
     fn find_existing_timestamp_file(
         session: &Session,
         remote_path: &str,
@@ -115,18 +108,6 @@ impl RemoteUploader {
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let sftp = session.sftp()?;
 
-        // let dir = sftp.opendir(Path::new(remote_path))?;
-        // let re = regex::Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z$")?;
-        // for entry in dir {
-        //     let entry = entry?;
-        //     if let Some(filename) = entry.filename() {
-        //         if re.is_match(&filename) {
-        //             let path = format!("{}/{}", remote_path, filename);
-        //             logger.log_event("found_existing_timestamp", json!({ "path": path }));
-        //             return Ok(path);
-        //         }
-        //     }
-        // }
 
         let entries = sftp.readdir(Path::new(remote_path))?;
 
@@ -142,101 +123,95 @@ impl RemoteUploader {
             }
         }
 
-
         logger.log_event("no_existing_timestamp_found", json!({ "dir": remote_path }));
         Err("No se encontró archivo timestamp en el servidor".into())
     }
 
+
     fn try_upload_once(
         remote: &RemoteConfig,
         local_path: &str,
-        local_timestamp_path: &str,
-        _timestamp_filename: &str,
         secure_logger: &SecureLogger,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // Establecer conexión TCP con timeout
-        let address = format!("{}:22", remote.server_address);
+        use std::process::Command;
+        use std::fs;
+        use std::io::{Read, Write};
+        use sha2::{Sha256, Digest};
+        use crate::utils::zip_utils::{zip_files, unzip_remote, cleanup_local_file};
+
         let tcp = TcpStream::connect_timeout(
-            &address
-                .to_socket_addrs()?
-                .next()
-                .ok_or("No se pudo resolver dirección")?,
+            &format!("{}:22", remote.server_address).to_socket_addrs()?.next().ok_or("No se pudo resolver dirección")?,
             Duration::from_secs(10),
         )?;
-
-        // Crear sesión SSH
         let mut session = Session::new()?;
         session.set_tcp_stream(tcp);
         session.handshake()?;
-
-        // Autenticación
         session.userauth_password(&remote.username, &remote.pass)?;
         if !session.authenticated() {
             return Err("Falló la autenticación SSH".into());
         }
 
-        // Hacer backup remoto antes de subir
-        let remote_bin_path = format!("{}/{}", remote.remote_path, Path::new(local_path).file_name().ok_or("Nombre de binario inválido")?.to_string_lossy());
-        let remote_timestamp_path = Self::find_existing_timestamp_file(&session, &remote.remote_path, secure_logger)?;
+        // Backup remoto si hay versión anterior
+        let remote_bin_path = format!("{}/{}", remote.remote_path, Path::new(local_path).file_name().unwrap().to_string_lossy());
+        if let Ok(prev_tsr) = Self::find_existing_timestamp_file(&session, &remote.remote_path, secure_logger) {
+            crate::backup::remote_backup::create_remote_backup(&session, &remote_bin_path, &prev_tsr, secure_logger)?;
+        }
 
-        crate::backup::remote_backup::create_remote_backup(
-            &session,
-            &remote_bin_path,
-            &remote_timestamp_path,
-            secure_logger,
-        )?;
+        // Generar SHA-256
+        let bin_name = Path::new(local_path).file_name().unwrap().to_string_lossy();
+        let sha_path = format!("{}.sha256", local_path);
+        let mut bin = fs::File::open(local_path)?;
+        let mut hasher = Sha256::new();
+        let mut buf = Vec::new();
+        bin.read_to_end(&mut buf)?;
+        hasher.update(&buf);
+        fs::write(&sha_path, format!("{:x}", hasher.finalize()))?;
 
-        // Inicializar SFTP
+        // Firmar con GPG
+        let asc_path = format!("{}.sha256.asc", local_path);
+        Command::new("gpg")
+            .args(["--armor", "--output", &asc_path, "--sign", &sha_path])
+            .output()?;
+
+        // Firma TSA
+        let tsq_path = format!("{}.tsq", local_path);
+        let tsr_path = format!("{}.tsr", local_path);
+        Command::new("openssl")
+            .args(["ts", "-query", "-data", &sha_path, "-sha256", "-no_nonce", "-out", &tsq_path])
+            .output()?;
+        Command::new("curl")
+            .args([
+                "-H", "Content-Type: application/timestamp-query",
+                "--data-binary", &format!("@{}", tsq_path),
+                "https://freetsa.org/tsr",
+                "-o", &tsr_path,
+            ])
+            .output()?;
+
+        // Crear ZIP
+        let zip_path = format!("{}.zip", local_path);
+        zip_files(&[local_path, &asc_path, &tsr_path], &zip_path)?;
+
+        // Subir ZIP
         let sftp = session.sftp()?;
+        let remote_zip = format!("{}/{}", remote.remote_path, Path::new(&zip_path).file_name().unwrap().to_string_lossy());
+        let mut remote_file = sftp.create(Path::new(&remote_zip))?;
+        let zip_bytes = fs::read(&zip_path)?;
+        remote_file.write_all(&zip_bytes)?;
 
-        // Preparar ruta remota (con nombre del binario)
-        let filename = Path::new(local_path)
-            .file_name()
-            .ok_or("No se pudo obtener nombre del archivo")?
-            .to_string_lossy();
-        let remote_file_path = format!("{}/{}", remote.remote_path, filename);
+        // Descomprimir remotamente
+        unzip_remote(&session, &remote_zip, &remote.remote_path)?;
 
-        // Leer archivo local
-        let mut local_file = std::fs::File::open(local_path)?;
-        let mut buffer = Vec::new();
-        local_file.read_to_end(&mut buffer)?;
-
-        // Crear archivo remoto vía SFTP
-        use ssh2::OpenFlags;
-        let mut remote_file = sftp.open_mode(
-            Path::new(&remote_file_path),
-            OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::TRUNCATE,
-            0o644,
-            ssh2::OpenType::File,
-        )?;
-
-        remote_file.write_all(&buffer)?;
-
-        secure_logger.log_event(
-            "upload_success",
-            json!({
-            "path": remote_file_path,
-            "message": "Archivo subido correctamente via SFTP"
-        }),
-        );
-
-        Self::upload_timestamp_file(
-            &sftp,
-            local_timestamp_path,
-            &remote_timestamp_path,
-            secure_logger,
-        )?;
-
-        secure_logger.log_event(
-            "upload_success",
-            json!({
-            "path": remote_file_path,
-            "message": "Timestamp subido correctamente via SFTP"
-        }),
-        );
+        // Limpiar
+        cleanup_local_file(&sha_path).ok();
+        cleanup_local_file(&asc_path).ok();
+        cleanup_local_file(&tsq_path).ok();
+        cleanup_local_file(&tsr_path).ok();
+        cleanup_local_file(&zip_path).ok();
 
         Ok(())
     }
+
 
     fn upload_timestamp_file(
         sftp: &ssh2::Sftp,

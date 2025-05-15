@@ -1,9 +1,14 @@
 use crate::{
     app::AvisaCtlApp,
     deploy::{
-        logic::RemoteConfig,
-        preflight::{options::PreflightOptions, remote_validation::validate_remote_write_access, run::run_preflight},
-        remote::deploy_to_remote_async,
+        remote::{
+            config::RemoteConfig,
+            deploy::deploy_to_remote_async,
+        },
+        preflight::{
+            options::PreflightOptions,
+            remote_validation::validate_remote_write_access,
+            run::run_preflight},
     },
     securelog::logger::SecureLogger,
 };

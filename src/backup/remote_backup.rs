@@ -1,37 +1,36 @@
-use ssh2::{Session};
+use ssh2::Session;
 use std::error::Error;
 use std::io::Read;
 use std::path::Path;
 
 use crate::securelog::logger::SecureLogger;
 
-/// Realiza un backup remoto del binario y del archivo de timestamp antes de la subida.
-/// Crea una carpeta y mueve ahí los archivos.
+/// Realiza un backup remoto: empaqueta binario, firma GPG y TSA previos en un ZIP
 pub fn create_remote_backup(
     ssh: &Session,
     bin_path: &str,
-    timestamp_path: &str,
+    tsr_path: &str,
     secure_logger: &SecureLogger,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     secure_logger.log_event(
         "remote_backup_start",
         serde_json::json!({
             "bin_path": bin_path,
-            "timestamp_path": timestamp_path
+            "tsr_path": tsr_path
         }),
     );
 
     let sftp = ssh.sftp()?;
 
-    // Leer contenido del archivo timestamp
-    let mut file = match sftp.open(Path::new(timestamp_path)) {
+    // Leer contenido del archivo .tsr para extraer la fecha del sello TSA
+    let mut file = match sftp.open(Path::new(tsr_path)) {
         Ok(f) => f,
         Err(err) => {
             secure_logger.log_event(
                 "remote_backup_skipped",
                 serde_json::json!({
-                    "reason": "timestamp no existe, se omite backup",
-                    "path": timestamp_path,
+                    "reason": ".tsr no existe, se omite backup",
+                    "path": tsr_path,
                     "error": format!("{}", err),
                 }),
             );
@@ -39,137 +38,85 @@ pub fn create_remote_backup(
         }
     };
 
-    let mut timestamp = String::new();
-    file.read_to_string(&mut timestamp)?;
-    let timestamp = timestamp.trim();
-    if timestamp.is_empty() {
-        secure_logger.log_error("remote_backup_fail", "El archivo timestamp está vacío");
-        return Err("timestamp remoto vacío".into());
-    }
+    let mut tsr_data = Vec::new();
+    file.read_to_end(&mut tsr_data)?;
+    let timestamp = extract_tsa_date(&tsr_data).unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%dT%H-%M-%SZ").to_string());
 
-    // Crear carpeta de backup dentro del mismo directorio del binario
-    let parent_dir = Path::new(bin_path)
-        .parent()
-        .ok_or("No se pudo obtener directorio padre del binario")?;
+    // Crear carpeta de backup
+    let parent_dir = Path::new(bin_path).parent().ok_or("No se pudo obtener directorio padre")?;
     let backup_dir = parent_dir.join(format!("backup_{}", timestamp));
     let backup_dir_str = backup_dir.to_string_lossy().replace('\\', "/");
 
-    // 🔍 DEBUG: Mostrar por terminal la ruta que se intenta crear
-    println!("Intentando crear carpeta de backup en: {}", backup_dir_str);
-    secure_logger.log_event(
-        "mkdir_attempt",
-        serde_json::json!({ "dir": backup_dir_str }),
-    );
-
-    // Verificar si la carpeta ya existe antes de intentar crearla
+    secure_logger.log_event("mkdir_attempt", serde_json::json!({ "dir": backup_dir_str }));
     match sftp.stat(Path::new(&backup_dir_str)) {
         Ok(_) => {
-            // Ya existe
-            println!("La carpeta ya existe, no se crea.");
-            secure_logger.log_event(
-                "mkdir_skipped_exists",
-                serde_json::json!({ "dir": backup_dir_str }),
-            );
+            secure_logger.log_event("mkdir_skipped_exists", serde_json::json!({ "dir": backup_dir_str }));
         }
-        Err(_e) => {
-            // No existe, intentar crearla
-            println!("La carpeta no existe, se intenta crear.");
-            match sftp.mkdir(Path::new(&backup_dir_str), 0o755) {
-                Ok(_) => {
-                    println!("Carpeta creada con éxito.");
-                    secure_logger.log_event(
-                        "mkdir_ok",
-                        serde_json::json!({ "dir": backup_dir_str }),
-                    );
-                }
-                Err(e) => {
-                    println!("Error al crear carpeta: {}", e);
-                    secure_logger.log_error(
-                        "mkdir_failed",
-                        &format!("No se pudo crear el directorio {} → {}", backup_dir_str, e),
-                    );
-                    return Err(e.into());
-                }
-            }
+        Err(_) => {
+            sftp.mkdir(Path::new(&backup_dir_str), 0o755)?;
+            secure_logger.log_event("mkdir_ok", serde_json::json!({ "dir": backup_dir_str }));
         }
     }
 
-    // Mover el binario
-    let bin_filename = Path::new(bin_path)
-        .file_name()
-        .ok_or("No se pudo obtener nombre del binario")?;
-    let bin_backup_path = backup_dir.join(bin_filename);
-    let bin_backup_path_str = bin_backup_path.to_string_lossy().replace('\\', "/");
+    // Archivos a incluir
+    let bin_filename = Path::new(bin_path).file_name().unwrap().to_string_lossy();
+    let asc_path = format!("{}/{}.sha256.asc", parent_dir.to_string_lossy(), bin_filename);
+    let tsr_path = tsr_path.to_string();
+    let zip_name = format!("backup_{}.zip", timestamp);
+    let zip_path = format!("{}/{}", backup_dir_str, zip_name);
 
-    sftp.rename(Path::new(bin_path), Path::new(&bin_backup_path_str), None)?;
-    secure_logger.log_event(
-        "remote_backup_moved_bin",
-        serde_json::json!({ "to": bin_backup_path_str }),
+    // Crear ZIP remoto y borrar archivos originales
+    let cmd = format!(
+        "zip -j '{}' '{}' '{}' '{}'; rm '{}' '{}' '{}'",
+        zip_path,
+        bin_path,
+        asc_path,
+        tsr_path,
+        bin_path,
+        asc_path,
+        tsr_path
     );
 
-    // Mover el timestamp
-    let ts_filename = Path::new(timestamp_path)
-        .file_name()
-        .ok_or("No se pudo obtener nombre del timestamp")?;
-    let ts_backup_path = backup_dir.join(ts_filename);
-    let ts_backup_path_str = ts_backup_path.to_string_lossy().replace('\\', "/");
+    let mut channel = ssh.channel_session()?;
+    channel.exec(&cmd)?;
+    let mut stdout = String::new();
+    channel.read_to_string(&mut stdout).ok();
+    let mut stderr = String::new();
+    channel.stderr().read_to_string(&mut stderr).ok();
+    channel.send_eof()?;
+    channel.wait_eof()?;
+    channel.wait_close()?;
+    let status = channel.exit_status()?;
 
-    sftp.rename(Path::new(timestamp_path), Path::new(&ts_backup_path_str), None)?;
-    secure_logger.log_event(
-        "remote_backup_moved_timestamp",
-        serde_json::json!({ "to": ts_backup_path_str }),
-    );
+    if status != 0 {
+        secure_logger.log_error(
+            "remote_zip_failed",
+            &format!("zip remoto falló:\nstdout: {}\nstderr: {}", stdout.trim(), stderr.trim()),
+        );
+        return Err("Fallo al crear zip remoto".into());
+    }
 
     secure_logger.log_event(
         "remote_backup_complete",
-        serde_json::json!({ "backup_dir": backup_dir_str }),
+        serde_json::json!({ "zip": zip_path, "stdout": stdout.trim() }),
     );
 
     Ok(())
 }
-//
-// fn run_command(
-//     ssh: &Session,
-//     command: &str,
-//     secure_logger: &SecureLogger,
-//     label: &str,
-// ) -> Result<String, Box<dyn Error + Send + Sync>> {
-//     let mut channel = ssh.channel_session()?;
-//
-//     if let Err(e) = channel.exec(command) {
-//         secure_logger.log_error(&format!("{}_exec_error", label), &format!("Falló exec: {} -> {}", label, e));
-//         return Err(e.into());
-//     }
-//
-//     // Leer stdout y stderr
-//     let mut stdout = String::new();
-//     channel.read_to_string(&mut stdout).ok();
-//
-//     let mut stderr = String::new();
-//     channel.stderr().read_to_string(&mut stderr).ok();
-//
-//     // Esperar correctamente cierre del canal
-//     channel.send_eof()?;
-//     channel.wait_eof()?;
-//     channel.wait_close()?;
-//     let exit_code = channel.exit_status()?;
-//
-//     if exit_code != 0 {
-//         secure_logger.log_error(
-//             &format!("{}_exit_nonzero", label),
-//             &format!(
-//                 "{} → código {}\nstdout: {}\nstderr: {}",
-//                 command, exit_code, stdout.trim(), stderr.trim()
-//             ),
-//         );
-//         return Err(format!("El comando '{}' falló con código {}", command, exit_code).into());
-//     }
-//
-//     secure_logger.log_event(
-//         &format!("{}_ok", label),
-//         serde_json::json!({ "cmd": command, "stdout": stdout.trim() }),
-//     );
-//
-//     Ok(stdout)
-// }
 
+/// Extrae la fecha de emisión desde la firma TSA (.tsr) si es posible
+fn extract_tsa_date(tsr_data: &[u8]) -> Option<String> {
+    use chrono::{DateTime, Utc};
+    use openssl::asn1::Asn1Time;
+    use openssl::pkcs7::Pkcs7;
+    use openssl::cms::CmsContentInfo;
+
+    // Fallback: intentar parsear con openssl
+    if let Ok(tsr) = openssl::ts::TsResp::from_der(tsr_data) {
+        if let Some(time) = tsr.token().and_then(|t| t.gen_time().ok()) {
+            let dt: DateTime<Utc> = DateTime::parse_from_rfc3339(&time.to_string()).ok()?.with_timezone(&Utc);
+            return Some(dt.format("%Y-%m-%dT%H-%M-%SZ").to_string());
+        }
+    }
+    None
+}

@@ -2,8 +2,9 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use crate::config::{save_config, AvisaCtlConfig};
-use crate::deploy::logic::{extract_package_name, Platform, RemoteConfig};
-
+use crate::deploy::logic::Platform;
+use crate::deploy::remote::bin_path::extract_package_name;
+use crate::deploy::remote::config::RemoteConfig;
 
 use crate::deploy::remote_uploader::RemoteUploader;
 use crate::securelog::logger::SecureLogger;
