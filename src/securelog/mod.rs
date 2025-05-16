@@ -3,7 +3,7 @@ mod entry;
 mod file;
 mod integrity;
 pub mod logger;
-mod gpg;
+pub mod sign;
 
 // Re-exports para facilitar el uso desde otros módulos
 pub use file::read_secure_log_formatted;

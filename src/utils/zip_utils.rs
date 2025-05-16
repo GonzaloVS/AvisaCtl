@@ -1,16 +1,16 @@
 use std::fs::{File, remove_file};
-use std::io::{BufReader, Read, Write};
+use std::io::{BufReader, Read};
 use std::path::Path;
 use zip::write::FileOptions;
 
 use ssh2::Session;
 
-/// Crea un ZIP con los archivos indicados.
 /// Los archivos se agregan con su nombre base (sin rutas).
-pub fn zip_files(files: &[&str], output_zip_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn zip_files(files: &[&str], output_zip_path: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let file = File::create(output_zip_path)?;
     let mut zip = zip::ZipWriter::new(file);
-    let options = FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let options: FileOptions<'_, ()> = FileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
 
     for path_str in files {
         let path = Path::new(path_str);
@@ -24,13 +24,23 @@ pub fn zip_files(files: &[&str], output_zip_path: &str) -> Result<(), Box<dyn st
     Ok(())
 }
 
-/// Ejecuta `unzip` remotamente para descomprimir el archivo ZIP en el servidor.
 pub fn unzip_remote(
     ssh: &Session,
     zip_path: &str,
     target_dir: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let cmd = format!("unzip -o {} -d {}", zip_path, target_dir);
+    let zip_filename = Path::new(zip_path)
+        .file_name()
+        .ok_or("Nombre de archivo inválido")?
+        .to_string_lossy();
+    let bin_base = zip_filename.trim_end_matches(".zip");
+
+    let cmd = format!(
+        "cd {target_dir} && unzip -o {zip_filename} && \
+        sha256sum -c {bin_base}.sha256 && \
+        rm {zip_filename}"
+    );
+
     let mut channel = ssh.channel_session()?;
     channel.exec(&cmd)?;
 
@@ -47,7 +57,7 @@ pub fn unzip_remote(
 
     if exit_status != 0 {
         return Err(format!(
-            "Error al descomprimir remotamente:\nstdout: {}\nstderr: {}",
+            "Error al validar ZIP:\nstdout: {}\nstderr: {}",
             stdout.trim(),
             stderr.trim()
         )
@@ -56,6 +66,7 @@ pub fn unzip_remote(
 
     Ok(())
 }
+
 
 /// Borra el archivo ZIP local después de subirlo, si se desea.
 pub fn cleanup_local_file(path: &str) -> std::io::Result<()> {

@@ -2,8 +2,10 @@ use ssh2::Session;
 use std::error::Error;
 use std::io::Read;
 use std::path::Path;
-
 use crate::securelog::logger::SecureLogger;
+use crate::utils::tsr_utils::extract_tsa_date;
+
+
 
 /// Realiza un backup remoto: empaqueta binario, firma GPG y TSA previos en un ZIP
 pub fn create_remote_backup(
@@ -40,7 +42,13 @@ pub fn create_remote_backup(
 
     let mut tsr_data = Vec::new();
     file.read_to_end(&mut tsr_data)?;
-    let timestamp = extract_tsa_date(&tsr_data).unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%dT%H-%M-%SZ").to_string());
+    let timestamp = match extract_tsa_date(&tsr_data) {
+        Ok(ts) => ts,
+        Err(e) => {
+            secure_logger.log_error("tsa_date_extract_failed", &format!("Error extrayendo fecha del .tsr: {}", e));
+            chrono::Utc::now().format("%Y-%m-%dT%H-%M-%SZ").to_string()
+        }
+    };
 
     // Crear carpeta de backup
     let parent_dir = Path::new(bin_path).parent().ok_or("No se pudo obtener directorio padre")?;
@@ -104,19 +112,4 @@ pub fn create_remote_backup(
     Ok(())
 }
 
-/// Extrae la fecha de emisión desde la firma TSA (.tsr) si es posible
-fn extract_tsa_date(tsr_data: &[u8]) -> Option<String> {
-    use chrono::{DateTime, Utc};
-    use openssl::asn1::Asn1Time;
-    use openssl::pkcs7::Pkcs7;
-    use openssl::cms::CmsContentInfo;
 
-    // Fallback: intentar parsear con openssl
-    if let Ok(tsr) = openssl::ts::TsResp::from_der(tsr_data) {
-        if let Some(time) = tsr.token().and_then(|t| t.gen_time().ok()) {
-            let dt: DateTime<Utc> = DateTime::parse_from_rfc3339(&time.to_string()).ok()?.with_timezone(&Utc);
-            return Some(dt.format("%Y-%m-%dT%H-%M-%SZ").to_string());
-        }
-    }
-    None
-}

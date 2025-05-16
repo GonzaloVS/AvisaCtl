@@ -9,8 +9,10 @@ use tokio::task::spawn_blocking;
 use tokio::time::timeout;
 
 use crate::deploy::remote::config::RemoteConfig;
+use crate::securelog::sign;
 use crate::securelog::logger::SecureLogger;
-use crate::utils::zip_utils::{zip_files, unzip_remote, cleanup_local_file};
+use crate::utils::tsr_utils::extract_tsa_date;
+
 
 pub struct RemoteUploader {
     remote: RemoteConfig,
@@ -99,35 +101,6 @@ impl RemoteUploader {
         Err("Fallaron ambos intentos de subida".into())
     }
 
-
-
-    fn find_existing_timestamp_file(
-        session: &Session,
-        remote_path: &str,
-        logger: &SecureLogger,
-    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-        let sftp = session.sftp()?;
-
-
-        let entries = sftp.readdir(Path::new(remote_path))?;
-
-        let re = regex::Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z$")?;
-
-        for (path, _stat) in entries {
-            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                if re.is_match(file_name) {
-                    let full_path = format!("{}/{}", remote_path, file_name);
-                    logger.log_event("found_existing_timestamp", json!({ "path": full_path }));
-                    return Ok(full_path);
-                }
-            }
-        }
-
-        logger.log_event("no_existing_timestamp_found", json!({ "dir": remote_path }));
-        Err("No se encontró archivo timestamp en el servidor".into())
-    }
-
-
     fn try_upload_once(
         remote: &RemoteConfig,
         local_path: &str,
@@ -151,12 +124,6 @@ impl RemoteUploader {
             return Err("Falló la autenticación SSH".into());
         }
 
-        // Backup remoto si hay versión anterior
-        let remote_bin_path = format!("{}/{}", remote.remote_path, Path::new(local_path).file_name().unwrap().to_string_lossy());
-        if let Ok(prev_tsr) = Self::find_existing_timestamp_file(&session, &remote.remote_path, secure_logger) {
-            crate::backup::remote_backup::create_remote_backup(&session, &remote_bin_path, &prev_tsr, secure_logger)?;
-        }
-
         // Generar SHA-256
         let bin_name = Path::new(local_path).file_name().unwrap().to_string_lossy();
         let sha_path = format!("{}.sha256", local_path);
@@ -165,13 +132,12 @@ impl RemoteUploader {
         let mut buf = Vec::new();
         bin.read_to_end(&mut buf)?;
         hasher.update(&buf);
-        fs::write(&sha_path, format!("{:x}", hasher.finalize()))?;
+        fs::write(&sha_path, format!("{:x}  {}", hasher.finalize(), bin_name))?;
 
         // Firmar con GPG
         let asc_path = format!("{}.sha256.asc", local_path);
-        Command::new("gpg")
-            .args(["--armor", "--output", &asc_path, "--sign", &sha_path])
-            .output()?;
+        sign::ensure_gpg_available(Some(secure_logger))?;
+        sign::sign_sha256_file(&sha_path, Some(secure_logger))?;
 
         // Firma TSA
         let tsq_path = format!("{}.tsq", local_path);
@@ -179,7 +145,8 @@ impl RemoteUploader {
         Command::new("openssl")
             .args(["ts", "-query", "-data", &sha_path, "-sha256", "-no_nonce", "-out", &tsq_path])
             .output()?;
-        Command::new("curl")
+
+        let curl_output = Command::new("curl")
             .args([
                 "-H", "Content-Type: application/timestamp-query",
                 "--data-binary", &format!("@{}", tsq_path),
@@ -187,6 +154,26 @@ impl RemoteUploader {
                 "-o", &tsr_path,
             ])
             .output()?;
+
+        if !curl_output.status.success() {
+            secure_logger.log_error(
+                "curl_tsa_request_failed",
+                &format!(
+                    "Falló descarga TSA con curl:\nstdout: {}\nstderr: {}",
+                    String::from_utf8_lossy(&curl_output.stdout),
+                    String::from_utf8_lossy(&curl_output.stderr),
+                ),
+            );
+            return Err("Fallo al obtener TSA desde freetsa.org".into());
+        }
+
+        // ✅ Validar que el .tsr recibido es válido
+        let tsr_bytes = fs::read(&tsr_path)?;
+        if let Err(e) = extract_tsa_date(&tsr_bytes) {
+            secure_logger.log_error("tsa_tsr_invalid", &format!("TSR recibido inválido: {}", e));
+            return Err("El archivo .tsr recibido es inválido o corrupto".into());
+        }
+
 
         // Crear ZIP
         let zip_path = format!("{}.zip", local_path);
@@ -246,32 +233,5 @@ impl RemoteUploader {
 
         Ok(())
     }
-
-}
-
-fn generate_local_timestamp_file(
-    local_binary_path: &str,
-    secure_logger: &SecureLogger,
-) -> Result<(String, String), Box<dyn std::error::Error + Send + Sync>> {
-    use chrono::Utc;
-    use std::fs;
-
-    let timestamp = Utc::now().format("%Y-%m-%dT%H-%M-%SZ").to_string();
-    let local_dir = Path::new(local_binary_path)
-        .parent()
-        .ok_or("No se pudo determinar el directorio del binario")?;
-    let local_timestamp_path = local_dir.join(&timestamp);
-    fs::write(&local_timestamp_path, &timestamp)?;
-
-    secure_logger.log_event(
-        "timestamp_generated",
-        json!({
-            "local_path": local_timestamp_path,
-            "value": timestamp
-        }),
-    );
-
-    Ok((local_timestamp_path.to_string_lossy().to_string(), timestamp))
-
 
 }
